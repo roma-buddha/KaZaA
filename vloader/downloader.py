@@ -36,6 +36,28 @@ def quality_to_formatsel(quality):
 
 
 # ---------------------------------------------------------------------------
+# YouTube bot-wall handling.  YouTube intermittently demands sign-in for
+# datacenter/VPN IPs or burst traffic ("Sign in to confirm you're not a
+# bot").  Two mitigations: borrow the user's browser login cookies
+# (settings yt_cookies), and fall back to an alternate player client.
+# ---------------------------------------------------------------------------
+
+BOT_MARKERS = ("Sign in to confirm", "not a bot")
+YOUTUBE_ALT_CLIENT = {
+    "extractor_args": {"youtube": {"player_client": ["android"]}}}
+
+
+def is_bot_check(msg):
+    return any(m in (msg or "") for m in BOT_MARKERS)
+
+
+def ydl_cookie_opts(settings):
+    """cookiesfrombrowser opts when the user enabled browser sign-in."""
+    b = ((settings.get("yt_cookies") if settings else "") or "").strip()
+    return {"cookiesfrombrowser": (b,)} if b else {}
+
+
+# ---------------------------------------------------------------------------
 # Live-recording registry & crash recovery.
 #
 # Every active live capture registers its .part file; the entry is removed
@@ -238,62 +260,9 @@ class DownloadWorker(QThread):
         ffmpeg = find_ffmpeg()
         if ffmpeg:
             opts["ffmpeg_location"] = os.path.dirname(ffmpeg)
+        opts.update(ydl_cookie_opts(self.settings))
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                self._ydl = ydl
-                # metadata first so live streams get a merge-free format
-                pre = ydl.extract_info(self.url, download=False)
-                if pre is None:
-                    raise DownloadCancelled()
-                self._live = bool(
-                    pre.get("is_live")
-                    or pre.get("live_status") == "is_live"
-                    or any((e or {}).get("is_live")
-                           for e in (pre.get("entries") or [])))
-                if self._live:
-                    # Live HLS is handled by a directly managed ffmpeg process:
-                    # yt-dlp's FFmpegFD never emits progress hooks and hides the
-                    # child process, so pause/stop/control must live here.
-                    self.finished_ok.emit(self._download_live(pre))
-                    return
-                else:
-                    info = ydl.process_ie_result(pre, download=True)
-                if info is None:
-                    raise DownloadCancelled()
-                entries = info.get("entries") or [info]
-                last = None
-                for e in entries:
-                    if e:
-                        last = e
-                name = (last or {}).get("title", self.url)
-                out = ydl.prepare_filename(last) if last else ""
-                transcripts_done = []
-                if self.subtitles and out:
-                    transcripts_done = self._convert_subtitles(out)
-                if self.transcript_only:
-                    out = transcripts_done[0] if transcripts_done else ""
-                size = (last or {}).get("filesize") or (last or {}).get("filesize_approx") or 0
-                # best single guess if merging produced another ext
-                if out and not os.path.exists(out):
-                    base, _ext = os.path.splitext(out)
-                    for cand in (base + ".mp4", base + ".mkv"):
-                        if os.path.exists(cand):
-                            out = cand
-                            break
-                # record song/video info in the file itself
-                artist = ((last or {}).get("artist")
-                          or (last or {}).get("channel")
-                          or (last or {}).get("uploader"))
-                year = str((last or {}).get("upload_date") or "")[:4]
-                if (not self.transcript_only and out
-                        and os.path.exists(out) and tagger.is_taggable(out)):
-                    tagger.tag_media_file(out, title=name, artist=artist,
-                                          year=year or None)
-                self.finished_ok.emit({"output": out, "name": name, "size": size,
-                                       "transcripts": transcripts_done,
-                                       "transcript_only": self.transcript_only,
-                                       "title": name, "artist": artist,
-                                       "year": year or None})
+            self._fetch(opts)
         except DownloadCancelled:
             if self._live and self._partial and os.path.exists(self._partial):
                 repaired = repair_live(self._partial)
@@ -305,14 +274,85 @@ class DownloadWorker(QThread):
             self.failed.emit("cancelled")
         except yt_dlp.utils.DownloadError as e:
             msg = str(e)
+            if is_bot_check(msg) and not ydl_cookie_opts(self.settings):
+                # YouTube flagged this client/IP: one retry with an
+                # alternate player client before giving up
+                from .debuglog import log as dbg
+                dbg("bot check detected, retrying with android client")
+                try:
+                    self._fetch({**opts, **YOUTUBE_ALT_CLIENT})
+                    return
+                except DownloadCancelled:
+                    self.failed.emit("cancelled")
+                    return
+                except yt_dlp.utils.DownloadError as e2:
+                    msg = str(e2)
             cause = getattr(e, "exc_info", None)
             if cause and cause[0] is DownloadCancelled or "Cancelled" in msg:
                 self.failed.emit("cancelled")
             else:
+                if is_bot_check(msg):
+                    msg = ("YouTube asks for sign-in (bot check). Enable "
+                           "browser cookies in Options, or retry later. "
+                           f"[{msg[:100]}]")
                 self.failed.emit(msg)
-        except Exception as e:  # noqa: BLE001 - surface anything to the UI
-            self.failed.emit(f"{type(e).__name__}: {e}")
 
+    def _fetch(self, opts):
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            self._ydl = ydl
+            # metadata first so live streams get a merge-free format
+            pre = ydl.extract_info(self.url, download=False)
+            if pre is None:
+                raise DownloadCancelled()
+            self._live = bool(
+                pre.get("is_live")
+                or pre.get("live_status") == "is_live"
+                or any((e or {}).get("is_live")
+                       for e in (pre.get("entries") or [])))
+            if self._live:
+                # Live HLS is handled by a directly managed ffmpeg process:
+                # yt-dlp's FFmpegFD never emits progress hooks and hides the
+                # child process, so pause/stop/control must live here.
+                self.finished_ok.emit(self._download_live(pre))
+                return
+            else:
+                info = ydl.process_ie_result(pre, download=True)
+            if info is None:
+                raise DownloadCancelled()
+            entries = info.get("entries") or [info]
+            last = None
+            for e in entries:
+                if e:
+                    last = e
+            name = (last or {}).get("title", self.url)
+            out = ydl.prepare_filename(last) if last else ""
+            transcripts_done = []
+            if self.subtitles and out:
+                transcripts_done = self._convert_subtitles(out)
+            if self.transcript_only:
+                out = transcripts_done[0] if transcripts_done else ""
+            size = (last or {}).get("filesize") or (last or {}).get("filesize_approx") or 0
+            # best single guess if merging produced another ext
+            if out and not os.path.exists(out):
+                base, _ext = os.path.splitext(out)
+                for cand in (base + ".mp4", base + ".mkv"):
+                    if os.path.exists(cand):
+                        out = cand
+                        break
+            # record song/video info in the file itself
+            artist = ((last or {}).get("artist")
+                      or (last or {}).get("channel")
+                      or (last or {}).get("uploader"))
+            year = str((last or {}).get("upload_date") or "")[:4]
+            if (not self.transcript_only and out
+                    and os.path.exists(out) and tagger.is_taggable(out)):
+                tagger.tag_media_file(out, title=name, artist=artist,
+                                      year=year or None)
+            self.finished_ok.emit({"output": out, "name": name, "size": size,
+                                   "transcripts": transcripts_done,
+                                   "transcript_only": self.transcript_only,
+                                   "title": name, "artist": artist,
+                                   "year": year or None})
 
     @staticmethod
     def _fmt_elapsed(seconds):
@@ -545,6 +585,7 @@ class DownloadWorker(QThread):
             "windows_filenames": True,
             "progress_hooks": [_hook],
         }
+        ydl_opts.update(ydl_cookie_opts(self.settings))
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             for i, tr in enumerate(tracks):
                 if self._cancelled:

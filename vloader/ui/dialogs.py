@@ -52,6 +52,17 @@ class PreferencesDialog(QDialog):
             self.after.addItem(i18n.tr(f"ad_{a}"), a)
         self.after.setCurrentIndex(AFTER_DONE.index(settings.get("after_done")))
         form.addRow(i18n.tr("after_done"), self.after)
+
+        self.ytc = QComboBox()
+        for v, lbl in [("", i18n.tr("p_yt_off")), ("chrome", i18n.tr("p_yt_chrome")),
+                       ("edge", i18n.tr("p_yt_edge")),
+                       ("firefox", i18n.tr("p_yt_firefox"))]:
+            self.ytc.addItem(lbl, v)
+        cur = settings.get("yt_cookies") or ""
+        self.ytc.setCurrentIndex(max(0, [self.ytc.itemData(i)
+                                         for i in range(self.ytc.count())]
+                                      .index(cur)))
+        form.addRow(i18n.tr("p_yt_cookies"), self.ytc)
         tabs.addTab(gen, i18n.tr("p_general"))
 
         # ---- Extensions ----
@@ -105,6 +116,7 @@ class PreferencesDialog(QDialog):
         s.set("simultaneous_downloads", self.sim_dl.value())
         s.set("simultaneous_converts", self.sim_cv.value())
         s.set("after_done", self.after.currentData())
+        s.set("yt_cookies", self.ytc.currentData())
         s.save()
         super().accept()
 

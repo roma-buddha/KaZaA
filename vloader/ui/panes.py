@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
 
 from .. import i18n
 from ..converter import ALL_FORMATS, AUDIO_FORMATS
+from ..downloader import is_bot_check
 from ..music import PreviewFetcher
 
 TRANSCRIPT_FORMATS = ["md", "srt", "vtt"]
@@ -286,14 +287,15 @@ class _MusicSearchWorker(QThread):
     done = Signal(list)
     failed = Signal(str)
 
-    def __init__(self, query, parent=None):
+    def __init__(self, query, parent=None, settings=None):
         super().__init__(parent)
         self.query = query
+        self.settings = settings
 
     def run(self):
         from .. import music
         try:
-            self.done.emit(music.search(self.query))
+            self.done.emit(music.search(self.query, settings=self.settings))
         except Exception as e:  # noqa: BLE001
             self.failed.emit(f"{type(e).__name__}: {e}")
 
@@ -301,9 +303,10 @@ class _MusicSearchWorker(QThread):
 class MusicPane(QWidget):
     """Search YouTube music: clean list, 20s preview, mp3 download."""
 
-    def __init__(self, on_download, parent=None):
+    def __init__(self, on_download, parent=None, settings=None):
         super().__init__(parent)
         self.on_download = on_download
+        self.settings = settings
         self._results = []
         self._search_worker = None
         self._fetcher = None
@@ -362,14 +365,17 @@ class MusicPane(QWidget):
         self._stop_preview()
         self.status_lbl.setText(i18n.tr("music_searching"))
         self.search_btn.setEnabled(False)
-        self._search_worker = _MusicSearchWorker(query, self)
+        self._search_worker = _MusicSearchWorker(query, self, self.settings)
         self._search_worker.done.connect(self._show_results)
         self._search_worker.failed.connect(self._search_failed)
         self._search_worker.start()
 
     def _search_failed(self, msg):
         self.search_btn.setEnabled(True)
-        self.status_lbl.setText(i18n.tr("music_failed", msg=msg))
+        if is_bot_check(msg):
+            self.status_lbl.setText(i18n.tr("music_bot_hint"))
+        else:
+            self.status_lbl.setText(i18n.tr("music_failed", msg=msg))
 
     def _show_results(self, results):
         self.search_btn.setEnabled(True)
@@ -419,7 +425,7 @@ class MusicPane(QWidget):
         self._stop_preview()
         self.status_lbl.setText(i18n.tr("music_previewing"))
         self._fetcher = PreviewFetcher(
-            self._results[row]["url"], self)
+            self._results[row]["url"], self, settings=self.settings)
         self._fetcher.done.connect(lambda p, x=row: self._play_preview(x, p))
         self._fetcher.failed.connect(self._preview_failed)
         self._fetcher.start()

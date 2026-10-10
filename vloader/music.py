@@ -7,17 +7,39 @@ from PySide6.QtCore import QThread, Signal
 
 import yt_dlp
 
-from .downloader import find_ffmpeg
+from .downloader import (YOUTUBE_ALT_CLIENT, find_ffmpeg, is_bot_check,
+                         ydl_cookie_opts)
 
 PREVIEW_SECONDS = 20
 
 
-def search(query, limit=15):
+def _extract(url_or_query, settings=None, flat=False):
+    """Run yt-dlp extraction, tolerating YouTube's intermittent bot wall:
+    once with the configured browser cookies (if any), and once more with an
+    alternate player client before surfacing a concise error."""
+    base = {"quiet": True, "noplaylist": True, "socket_timeout": 20}
+    if flat:
+        base["extract_flat"] = False
+    base.update(ydl_cookie_opts(settings))
+    try:
+        with yt_dlp.YoutubeDL(base) as ydl:
+            return ydl.extract_info(url_or_query, download=False)
+    except yt_dlp.utils.DownloadError as e:
+        msg = str(e)
+        if not is_bot_check(msg) or ydl_cookie_opts(settings):
+            raise
+        try:
+            with yt_dlp.YoutubeDL({**base, **YOUTUBE_ALT_CLIENT}) as ydl:
+                return ydl.extract_info(url_or_query, download=False)
+        except yt_dlp.utils.DownloadError as e2:
+            raise RuntimeError(
+                "YouTube asks for sign-in (bot check). Enable browser "
+                f"cookies in Options, or retry later. [{str(e2)[:100]}]")
+
+
+def search(query, limit=15, settings=None):
     """Search YouTube for music videos; return [{id,title,artist,duration,url}]."""
-    opts = {"quiet": True, "noplaylist": True, "socket_timeout": 20,
-            "extract_flat": False}
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    info = _extract(f"ytsearch{limit}:{query}", settings, flat=True)
     out = []
     for e in (info.get("entries") or []):
         if not e or not e.get("id"):
@@ -32,12 +54,10 @@ def search(query, limit=15):
     return out
 
 
-def direct_audio_url(watch_url):
+def direct_audio_url(watch_url, settings=None):
     """Resolve a watch URL to a direct audio-only stream URL (m4a preferred,
     so the preview plays on the Windows media backend)."""
-    opts = {"quiet": True, "noplaylist": True, "socket_timeout": 20}
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(watch_url, download=False)
+    info = _extract(watch_url, settings)
     auds = [f for f in (info.get("formats") or [])
             if f.get("acodec") not in (None, "none")
             and f.get("vcodec") in (None, "none") and f.get("url")]
@@ -53,13 +73,14 @@ class PreviewFetcher(QThread):
     done = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, watch_url, parent=None):
+    def __init__(self, watch_url, parent=None, settings=None):
         super().__init__(parent)
         self.watch_url = watch_url
+        self.settings = settings
 
     def run(self):
         try:
-            url = direct_audio_url(self.watch_url)
+            url = direct_audio_url(self.watch_url, self.settings)
             ffmpeg = find_ffmpeg()
             if not ffmpeg:
                 self.failed.emit("ffmpeg not found")

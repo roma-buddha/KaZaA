@@ -17,6 +17,8 @@ DEFAULTS = {
     "open_folder_after_download": False,
     "after_done": "nothing",            # nothing | exit | shutdown | restart | logoff | hibernate | standby
     "language": "en",
+    "yt_cookies": "",                   # "" off | chrome | edge | firefox —
+                                        # sign-in cookies for YouTube bot checks
     "extensions_enabled": True,
     "recorder_audio": True,
     "recorder_framerate": 30,

@@ -58,7 +58,7 @@ class MainWindow(QMainWindow):
         self.download_pane = DownloadPane(self.settings, self._submit_urls)
         self.activity = ActivityPane()
         self.convert_pane = ConvertPane(self.settings, self._submit_convert)
-        self.music_pane = MusicPane(self._download_song)
+        self.music_pane = MusicPane(self._download_song, settings=self.settings)
         pages = [("⬇  " + i18n.tr("tab_download"), self.download_pane),
                  ("≡  " + i18n.tr("tab_activity"), self.activity),
                  ("⇄  " + i18n.tr("tab_convert"), self.convert_pane),
