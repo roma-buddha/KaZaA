@@ -60,6 +60,21 @@ def main(argv=None):
     app = QApplication(sys.argv[:1])
     theme.apply(app)
     win = MainWindow()
+
+    # Repair live captures orphaned by a crash/kill during recording.
+    from PySide6.QtCore import QTimer
+    from .downloader import recover_interrupted_live
+    import os as _os
+
+    def _sweep_interrupted():
+        recovered = recover_interrupted_live()
+        if recovered:
+            names = ", ".join(_os.path.basename(p) for p in recovered)
+            win.statusBar().showMessage(
+                f"Recovered interrupted live recording(s): {names}", 20000)
+
+    QTimer.singleShot(300, _sweep_interrupted)
+
     if args.output_dir:
         win.settings.set("save_to", args.output_dir)
     if args.url:

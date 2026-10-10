@@ -35,8 +35,12 @@ need more. No accounts, no ads, no telemetry, no license checks.
 - **● LIVE status** — live tasks show a red badge, an indeterminate progress
   bar and the recording elapsed time instead of a percentage
 - **Graceful stop** — the ⏹ button sends ffmpeg a quit command so the MP4 is
-  finalized immediately and stays playable; if the app is killed instead, the
-  partial capture is auto-repaired on next run
+  finalized immediately and stays playable
+- **Crash recovery** — every active recording is registered on disk; if the
+  app is force-killed mid-recording, the next launch detects the orphaned
+  partial and re-muxes it into a playable MP4 automatically (a force-killed
+  app can leave an orphan ffmpeg behind — `taskkill /F /IM ffmpeg.exe`
+  releases the file so the next run can repair it)
 - **Original naming** — recordings are saved like `model 2026-10-10 22:32.mp4`,
   named after the title/timestamp the site reports
 - Quality selection applies (best variant not exceeding the chosen resolution);

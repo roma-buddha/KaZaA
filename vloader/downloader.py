@@ -1,4 +1,5 @@
 """Download engine: yt-dlp driven QThread workers with queue + concurrency control."""
+import json
 import os
 import re
 import subprocess
@@ -29,6 +30,122 @@ def quality_to_formatsel(quality):
     # pick the best stream not exceeding the requested height
     return (f"bestvideo[height<={h}]+bestaudio/best[height<={h}]/"
             f"bestvideo*+bestaudio/best")
+
+
+# ---------------------------------------------------------------------------
+# Live-recording registry & crash recovery.
+#
+# Every active live capture registers its .part file; the entry is removed
+# when the recording finishes (any outcome).  If the app is killed while
+# recording, the entry survives and the next launch re-muxes the orphaned
+# .part into a playable mp4 (a mid-stream mp4 has no moov box).
+# ---------------------------------------------------------------------------
+
+def _live_registry_path():
+    return os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
+                        "VLoader", "live_registry.json")
+
+
+def _read_live_registry():
+    try:
+        with open(_live_registry_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_live_registry(reg):
+    try:
+        os.makedirs(os.path.dirname(_live_registry_path()), exist_ok=True)
+        with open(_live_registry_path(), "w", encoding="utf-8") as f:
+            json.dump(reg, f)
+    except OSError:
+        pass
+
+
+def _register_live(partial, out, url):
+    reg = _read_live_registry()
+    reg[partial] = {"out": out, "url": url}
+    _write_live_registry(reg)
+
+
+def _unregister_live(partial):
+    reg = _read_live_registry()
+    if partial in reg:
+        del reg[partial]
+        _write_live_registry(reg)
+
+
+def repair_live(partial):
+    """A live capture stopped mid-stream lacks the mp4 moov box;
+    re-mux with ffmpeg so the file is playable. Returns final path."""
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return None
+    if partial.endswith(".part"):
+        final = partial[:-5]
+    else:
+        final = partial + ".fixed.mp4"
+    try:
+        rc = subprocess.run(
+            [ffmpeg, "-y", "-nostdin", "-hide_banner",
+             "-err_detect", "ignore_err", "-i", partial,
+             "-c", "copy", "-movflags", "+faststart", final],
+            capture_output=True, timeout=300,
+            stdin=subprocess.DEVNULL).returncode
+        if rc == 0 and os.path.exists(final) and os.path.getsize(final) > 0:
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
+            return final
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def recover_interrupted_live(min_age=15.0):
+    """Repair live captures left over when the app died mid-recording.
+
+    Called once at startup.  Files still being written (fresh mtime, i.e. an
+    orphaned ffmpeg is probably still recording them) are left alone and keep
+    their registry entry.  Returns the list of recovered final paths.
+    """
+    from .debuglog import log as dbg
+    reg = _read_live_registry()
+    if not reg:
+        return []
+    recovered, keep = [], {}
+    for partial, meta in reg.items():
+        if not os.path.exists(partial):
+            dbg(f"recover: partial gone, dropping {partial!r}")
+            continue
+        try:
+            age = time.time() - os.path.getmtime(partial)
+        except OSError:
+            age = 0.0
+        if age < min_age:
+            keep[partial] = meta
+            dbg(f"recover: {partial!r} still being written "
+                f"(age {age:.0f}s); keeping entry")
+            continue
+        try:
+            final = repair_live(partial)
+        except OSError as e:
+            keep[partial] = meta
+            dbg(f"recover: {partial!r} locked ({e}); keeping entry")
+            continue
+        if final:
+            dbg(f"recover: repaired {final!r}")
+            recovered.append(final)
+        else:
+            keep[partial] = meta
+            dbg(f"recover: repair failed for {partial!r}; keeping entry")
+    if keep != reg:
+        _write_live_registry(keep)
+    return recovered
+
 
 
 class DownloadWorker(QThread):
@@ -175,7 +292,7 @@ class DownloadWorker(QThread):
                                        "year": year or None})
         except DownloadCancelled:
             if self._live and self._partial and os.path.exists(self._partial):
-                repaired = self._repair_live(self._partial)
+                repaired = repair_live(self._partial)
                 if repaired:
                     self.finished_ok.emit({"output": repaired, "name": "",
                                            "size": os.path.getsize(repaired),
@@ -285,60 +402,72 @@ class DownloadWorker(QThread):
             "status": "downloading", "live": True,
             "elapsed": "0:00", "size": 0,
             "name": os.path.basename(out)})
+        from .debuglog import log as dbg
+        dbg(f"live: starting ffmpeg for {out!r} ({len(cmd)} args)")
         proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE, text=True, encoding="utf-8",
             errors="replace")
         self._proc = proc
         threading.Thread(target=_reader, daemon=True).start()
+        _register_live(partial, out, self.url)
 
-        q_sent = False
-        start = time.monotonic()
-        last_emit = 0.0
-        while True:
-            try:
-                rc = proc.wait(timeout=0.5)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-            if self._cancelled and not q_sent and proc.stdin:
-                q_sent = True
+        try:
+            q_sent = False
+            start = time.monotonic()
+            last_emit = 0.0
+            while True:
                 try:
-                    proc.stdin.write("q\n")
-                    proc.stdin.flush()
-                except (OSError, ValueError):
+                    rc = proc.wait(timeout=0.5)
+                    break
+                except subprocess.TimeoutExpired:
                     pass
-            now = time.monotonic()
-            if now - last_emit >= 1.0:
-                last_emit = now
-                el = state["elapsed"]
-                if el is None:
-                    el = now - start
-                try:
-                    size = os.path.getsize(partial)
-                except OSError:
-                    size = 0
-                self.progress.emit({
-                    "status": "downloading", "live": True,
-                    "elapsed": self._fmt_elapsed(el), "size": size,
-                    "name": os.path.basename(out)})
+                if self._cancelled and not q_sent and proc.stdin:
+                    q_sent = True
+                    try:
+                        proc.stdin.write("q\n")
+                        proc.stdin.flush()
+                        dbg("live: graceful stop (q) sent")
+                    except (OSError, ValueError) as e:
+                        dbg(f"live: stdin write failed: {e}")
+                now = time.monotonic()
+                if now - last_emit >= 1.0:
+                    last_emit = now
+                    el = state["elapsed"]
+                    if el is None:
+                        el = now - start
+                    try:
+                        size = os.path.getsize(partial)
+                    except OSError:
+                        size = 0
+                    self.progress.emit({
+                        "status": "downloading", "live": True,
+                        "elapsed": self._fmt_elapsed(el), "size": size,
+                        "name": os.path.basename(out)})
 
-        stopped = bool(self._cancelled or q_sent)
-        if rc == 0 and os.path.exists(partial) and os.path.getsize(partial) > 0:
-            os.replace(partial, out)
-            return {"output": out, "name": os.path.basename(out),
-                    "size": os.path.getsize(out), "live": True,
-                    "stopped": stopped}
-        if stopped and os.path.exists(partial):
-            repaired = self._repair_live(partial)
-            if repaired:
-                return {"output": repaired,
-                        "name": os.path.basename(repaired),
-                        "size": os.path.getsize(repaired), "live": True,
-                        "stopped": True}
-        tail = " | ".join(state["tail"][-5:])
-        raise yt_dlp.utils.DownloadError(
-            f"ffmpeg exited with code {rc}: {tail or 'no output'}")
+            stopped = bool(self._cancelled or q_sent)
+            dbg(f"live: ffmpeg exited rc={rc} cancelled={self._cancelled} "
+                f"partial_exists={os.path.exists(partial)}")
+            if rc == 0 and os.path.exists(partial) and os.path.getsize(partial) > 0:
+                os.replace(partial, out)
+                dbg(f"live: saved {out}")
+                return {"output": out, "name": os.path.basename(out),
+                        "size": os.path.getsize(out), "live": True,
+                        "stopped": stopped}
+            if stopped and os.path.exists(partial):
+                repaired = repair_live(partial)
+                if repaired:
+                    dbg(f"live: repaired {repaired}")
+                    return {"output": repaired,
+                            "name": os.path.basename(repaired),
+                            "size": os.path.getsize(repaired), "live": True,
+                            "stopped": True}
+            tail = " | ".join(state["tail"][-5:])
+            dbg(f"live: failed rc={rc}: {tail}")
+            raise yt_dlp.utils.DownloadError(
+                f"ffmpeg exited with code {rc}: {tail or 'no output'}")
+        finally:
+            _unregister_live(partial)
 
     def _fetch_cover(self, url, tmpdir):
         if not url:
@@ -587,33 +716,6 @@ class DownloadWorker(QThread):
                             "name": (f"{i + 1}/{n} · {tr['title']}" if n > 1
                                      else tr["title"])})
         return final
-
-    def _repair_live(self, partial):
-        """A live capture stopped mid-stream lacks the mp4 moov box;
-        re-mux with ffmpeg so the file is playable. Returns final path."""
-        ffmpeg = find_ffmpeg()
-        if not ffmpeg:
-            return None
-        if partial.endswith(".part"):
-            final = partial[:-5]
-        else:
-            final = partial + ".fixed.mp4"
-        try:
-            rc = subprocess.run(
-                [ffmpeg, "-y", "-nostdin", "-hide_banner",
-                 "-err_detect", "ignore_err", "-i", partial,
-                 "-c", "copy", "-movflags", "+faststart", final],
-                capture_output=True, timeout=300,
-                stdin=subprocess.DEVNULL).returncode
-            if rc == 0 and os.path.exists(final) and os.path.getsize(final) > 0:
-                try:
-                    os.remove(partial)
-                except OSError:
-                    pass
-                return final
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        return None
 
     def _convert_subtitles(self, out):
         """Convert downloaded vtt/srt sidecars to the requested format.
