@@ -93,7 +93,8 @@ def repair_live(partial):
              "-err_detect", "ignore_err", "-i", partial,
              "-c", "copy", "-movflags", "+faststart", final],
             capture_output=True, timeout=300,
-            stdin=subprocess.DEVNULL).returncode
+            stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode
         if rc == 0 and os.path.exists(final) and os.path.getsize(final) > 0:
             try:
                 os.remove(partial)
@@ -407,7 +408,8 @@ class DownloadWorker(QThread):
         proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE, text=True, encoding="utf-8",
-            errors="replace")
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self._proc = proc
         threading.Thread(target=_reader, daemon=True).start()
         _register_live(partial, out, self.url)
@@ -706,7 +708,8 @@ class DownloadWorker(QThread):
             cmd += ["-metadata", f"track={track_no}"]
         cmd += [final]
         r = subprocess.run(cmd, capture_output=True, timeout=600,
-                           stdin=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if r.returncode != 0 or not os.path.exists(final):
             raise RuntimeError(
                 f"mp3 encode failed: {(r.stderr or b'')[-200:]!r}")

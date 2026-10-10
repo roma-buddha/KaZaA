@@ -42,7 +42,8 @@ def tag_media_file(path, title=None, artist=None, album=None, year=None,
     cmd += meta + [tmp]
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=300,
-                           stdin=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if (r.returncode == 0 and os.path.exists(tmp)
                 and os.path.getsize(tmp) > 0):
             os.replace(tmp, path)

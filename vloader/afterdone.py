@@ -18,7 +18,9 @@ def perform(action):
     }
     for argv in cmds.get(action, []):
         try:
-            subprocess.Popen(argv)
+            subprocess.Popen(
+                argv,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError:
             pass
 

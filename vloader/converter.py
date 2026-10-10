@@ -167,7 +167,8 @@ def probe_duration(path):
             [ffprobe, "-v", "quiet", "-show_entries", "format=duration",
              "-of", "csv=p=0", path],
             capture_output=True, text=True, timeout=30,
-            stdin=subprocess.DEVNULL)
+            stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return float(out.stdout.strip())
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return 0
