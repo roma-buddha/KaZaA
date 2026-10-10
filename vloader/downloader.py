@@ -116,11 +116,19 @@ class DownloadWorker(QThread):
 
 
 def find_ffmpeg():
-    """Return path to ffmpeg.exe: bundled bin/ first, then PATH."""
+    """Return path to ffmpeg.exe: source-tree bin/, frozen bundle, then PATH."""
+    import sys
+    candidates = []
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    bundled = os.path.join(here, "bin", "ffmpeg.exe")
-    if os.path.exists(bundled):
-        return bundled
+    candidates.append(os.path.join(here, "bin", "ffmpeg.exe"))
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        exe_dir = os.path.dirname(sys.executable)
+        candidates.append(os.path.join(meipass, "bin", "ffmpeg.exe"))
+        candidates.append(os.path.join(exe_dir, "bin", "ffmpeg.exe"))
+    for c in candidates:
+        if os.path.exists(c):
+            return c
     from shutil import which
     return which("ffmpeg")
 

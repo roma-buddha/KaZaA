@@ -34,6 +34,10 @@ class MainWindow(QMainWindow):
         self.convert_workers = {}   # task_id -> worker
         self._conv_next = 100000
         self._pending_conv = []
+        # per-submission options (set by DownloadPane; safe defaults for CLI)
+        self._auto_conv_fmt = ""
+        self._auto_conv_q = "normal"
+        self._open_after = False
 
         self.setWindowTitle(i18n.tr("app_title"))
         self.resize(980, 640)

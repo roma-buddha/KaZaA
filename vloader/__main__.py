@@ -37,7 +37,7 @@ def main(argv=None):
     if args.output_dir:
         win.settings.set("save_to", args.output_dir)
     if args.url:
-        win.tabs.setCurrentIndex(1)
+        win.set_page(1)
         for url in args.url:
             tid = win.downloads.submit(url, quality=args.quality)
             if tid:
