@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel,
                                QListWidget, QListWidgetItem, QMainWindow,
                                QMessageBox, QSizePolicy, QStackedWidget,
@@ -15,6 +15,7 @@ from ..bridgeserver import BridgeServer
 from ..converter import ConvertWorker
 from ..downloader import DownloadManager
 from ..history import History
+from ..rsrc import asset
 from ..settings import Settings
 from .activity import ActivityPane
 from .dialogs import AboutDialog, HistoryDialog, PreferencesDialog
@@ -40,15 +41,16 @@ class MainWindow(QMainWindow):
         self._open_after = False
 
         self.setWindowTitle(i18n.tr("app_title"))
+        self.setWindowIcon(QIcon(asset("icon.ico")))
         self.resize(980, 640)
         geom = self.settings.get("window_geometry")
         if geom:
             self.restoreGeometry(bytes.fromhex(geom))
 
         # --- sidebar navigation + stacked pages ---
+        from . import theme
         self.nav = QListWidget()
         self.nav.setObjectName("nav")
-        self.nav.setFixedWidth(210)
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.stack = QStackedWidget()
@@ -71,7 +73,25 @@ class MainWindow(QMainWindow):
         cl = QHBoxLayout(central)
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(0)
-        cl.addWidget(self.nav)
+
+        # sidebar: Kazaa branding on top, navigation below
+        side = QWidget()
+        side.setFixedWidth(210)
+        side.setStyleSheet(
+            f"background: {theme.PANEL}; border-right: 1px solid {theme.BORDER};")
+        sl = QVBoxLayout(side)
+        sl.setContentsMargins(16, 18, 16, 12)
+        sl.setSpacing(10)
+        logo = QLabel()
+        logo.setPixmap(QPixmap(asset("logo.png")).scaledToWidth(
+            178, Qt.SmoothTransformation))
+        logo.setAlignment(Qt.AlignCenter)
+        logo.setStyleSheet("background: transparent;")
+        sl.addWidget(logo)
+        self.nav.setParent(None)
+        sl.addWidget(self.nav, 1)
+
+        cl.addWidget(side)
         cl.addWidget(self.stack, 1)
         self.setCentralWidget(central)
         self._pages = {"download": 0, "activity": 1, "convert": 2, "music": 3}

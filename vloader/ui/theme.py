@@ -1,15 +1,16 @@
 """VLoader visual theme — dark, modern, applied app-wide via Qt style sheets."""
 
-ACCENT = "#7c6cff"
-ACCENT_HOVER = "#948aff"
-ACCENT_PRESSED = "#6557e8"
-ACCENT_SOFT = "rgba(124, 108, 255, 0.14)"
+ACCENT = "#c0f800"          # Kazaa lime
+ACCENT_HOVER = "#d4ff3d"
+ACCENT_PRESSED = "#a4d400"
+ACCENT_SOFT = "rgba(192, 248, 0, 0.14)"
+ON_ACCENT = "#0d0f12"       # text/icon color on top of the lime accent
 
-BG = "#12141c"
-PANEL = "#1a1d29"
-CARD = "#1f2333"
-INPUT = "#171a26"
-BORDER = "#2a2f42"
+BG = "#0a0b0d"
+PANEL = "#101215"
+CARD = "#171a1e"
+INPUT = "#0e1013"
+BORDER = "#23272e"
 TEXT = "#e8eaf2"
 TEXT_DIM = "#9aa0b4"
 DANGER = "#ff5d6c"
@@ -59,7 +60,7 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit {{
     border-radius: 8px;
     padding: 7px 12px;
     selection-background-color: {ACCENT};
-    selection-color: white;
+    selection-color: {ON_ACCENT};
     min-height: 20px;
 }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus {{
@@ -80,7 +81,7 @@ QComboBox QAbstractItemView {{
     border: 1px solid {BORDER};
     border-radius: 8px;
     selection-background-color: {ACCENT};
-    selection-color: white;
+    selection-color: {ON_ACCENT};
     padding: 4px;
 }}
 
@@ -91,14 +92,14 @@ QPushButton {{
     padding: 8px 18px;
     color: {TEXT};
 }}
-QPushButton:hover {{ background: #262b3e; border-color: #343a52; }}
-QPushButton:pressed {{ background: #2d3350; }}
+QPushButton:hover {{ background: #20242b; border-color: #2c313a; }}
+QPushButton:pressed {{ background: #272c34; }}
 QPushButton:disabled {{ color: {TEXT_DIM}; background: {PANEL}; }}
 QPushButton[variant="primary"] {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 {ACCENT}, stop:1 {ACCENT_HOVER});
     border: none;
-    color: white;
+    color: {ON_ACCENT};
     font-weight: 600;
     padding: 10px 22px;
 }}
@@ -168,7 +169,7 @@ QProgressBar {{
 QProgressBar::chunk {{
     border-radius: 5px;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {ACCENT}, stop:1 #4fc3f7);
+        stop:0 {ACCENT}, stop:1 #eaff8a);
 }}
 
 /* ---------- table ---------- */
@@ -181,7 +182,7 @@ QTableWidget {{
     selection-color: {TEXT};
 }}
 QTableWidget::item {{ padding: 6px 10px; border: none; }}
-QTableWidget::item:hover {{ background: #232838; }}
+QTableWidget::item:hover {{ background: #1c2026; }}
 QHeaderView::section {{
     background: {PANEL};
     color: {TEXT_DIM};
@@ -214,17 +215,17 @@ QScrollBar:vertical {{
     background: transparent; width: 10px; margin: 4px 2px;
 }}
 QScrollBar::handle:vertical {{
-    background: #2e3448; border-radius: 5px; min-height: 30px;
+    background: #23272e; border-radius: 5px; min-height: 30px;
 }}
-QScrollBar::handle:vertical:hover {{ background: #3a415c; }}
+QScrollBar::handle:vertical:hover {{ background: #2e333b; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
     background: transparent; height: 10px; margin: 2px 4px;
 }}
 QScrollBar::handle:horizontal {{
-    background: #2e3448; border-radius: 5px; min-width: 30px;
+    background: #23272e; border-radius: 5px; min-width: 30px;
 }}
-QScrollBar::handle:horizontal:hover {{ background: #3a415c; }}
+QScrollBar::handle:horizontal:hover {{ background: #2e333b; }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
 /* ---------- status bar & misc ---------- */

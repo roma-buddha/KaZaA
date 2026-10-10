@@ -134,6 +134,15 @@ class AboutDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(i18n.tr("m_about"))
         lay = QVBoxLayout(self)
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtCore import Qt
+        from ..rsrc import asset
+        logo = QLabel()
+        logo.setPixmap(QPixmap(asset("logo.png")).scaledToWidth(
+            320, Qt.SmoothTransformation))
+        logo.setAlignment(Qt.AlignCenter)
+        logo.setStyleSheet("background: transparent;")
+        lay.addWidget(logo)
         tb = QTextBrowser()
         tb.setHtml(i18n.tr("about_text", ver=version).replace("\n", "<br>"))
         lay.addWidget(tb)
