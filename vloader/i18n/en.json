@@ -114,5 +114,6 @@
   "clip_empty": "Clipboard contains no URL",
   "subtitles": "Also download transcript",
   "sub_langs": "Transcript languages",
-  "sub_auto": "Include auto-generated captions"
+  "sub_auto": "Include auto-generated captions",
+  "transcript_only": "Transcript only (skip video)"
 }

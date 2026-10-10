@@ -33,7 +33,7 @@ class DownloadWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, url, settings: Settings, quality=None, subtitles=None,
-                 parent=None):
+                 transcript_only=False, parent=None):
         super().__init__(parent)
         self.url = url
         self.settings = settings
@@ -41,6 +41,7 @@ class DownloadWorker(QThread):
         # subtitles: None or {"format": "md"|"srt"|"vtt", "langs": [...],
         #                     "auto": bool}
         self.subtitles = subtitles
+        self.transcript_only = transcript_only
         self._ydl = None
         self._cancelled = False
 
@@ -85,6 +86,8 @@ class DownloadWorker(QThread):
             opts["writeautomaticsub"] = bool(self.subtitles.get("auto", True))
             opts["subtitleslangs"] = self.subtitles.get("langs") or ["en"]
             opts["subtitlesformat"] = "vtt"
+        if self.transcript_only:
+            opts["skip_download"] = True
         # prefer the bundled ffmpeg so merging/convert works out of the box
         ffmpeg = find_ffmpeg()
         if ffmpeg:
@@ -102,8 +105,11 @@ class DownloadWorker(QThread):
                         last = e
                 name = (last or {}).get("title", self.url)
                 out = ydl.prepare_filename(last) if last else ""
+                transcripts_done = []
                 if self.subtitles and out:
-                    self._convert_subtitles(out)
+                    transcripts_done = self._convert_subtitles(out)
+                if self.transcript_only:
+                    out = transcripts_done[0] if transcripts_done else ""
                 size = (last or {}).get("filesize") or (last or {}).get("filesize_approx") or 0
                 # best single guess if merging produced another ext
                 if out and not os.path.exists(out):
@@ -112,7 +118,9 @@ class DownloadWorker(QThread):
                         if os.path.exists(cand):
                             out = cand
                             break
-                self.finished_ok.emit({"output": out, "name": name, "size": size})
+                self.finished_ok.emit({"output": out, "name": name, "size": size,
+                                       "transcripts": transcripts_done,
+                                       "transcript_only": self.transcript_only})
         except DownloadCancelled:
             self.failed.emit("cancelled")
         except yt_dlp.utils.DownloadError as e:
@@ -127,19 +135,25 @@ class DownloadWorker(QThread):
 
 
     def _convert_subtitles(self, out):
-        """Convert downloaded vtt/srt sidecars to the requested format."""
-        import glob
-
+        """Convert downloaded vtt/srt sidecars to the requested format.
+        Returns the list of produced transcript files."""
         from . import transcripts
         from .debuglog import log as dbg
+        done = []
         base, _ = os.path.splitext(out)
         target = self.subtitles.get("format", "md")
-        seen = set()
-        sidecars = sorted(glob.glob(base + ".*.vtt") + glob.glob(base + ".*.srt"))
+        # match by prefix instead of glob: video titles may contain [ ] ( )
+        d = os.path.dirname(base) or "."
+        pref = os.path.basename(base) + "."
+        try:
+            names = os.listdir(d)
+        except OSError:
+            names = []
+        sidecars = sorted(os.path.join(d, f) for f in names
+                          if f.startswith(pref) and f.lower().endswith((".vtt", ".srt")))
         for sidecar in sidecars:
-            if sidecar in seen or not os.path.exists(sidecar):
+            if not os.path.exists(sidecar):
                 continue
-            seen.add(sidecar)
             stem = os.path.basename(sidecar)[len(os.path.basename(base)) + 1:]
             parts = stem.split(".")              # e.g. ["en"], ["en", "auto"]
             lang = parts[0] if parts else ""
@@ -148,6 +162,7 @@ class DownloadWorker(QThread):
                 if os.path.abspath(sidecar) != os.path.abspath(final):
                     os.replace(sidecar, final)
                     dbg(f"subtitle kept: {final}")
+                done.append(final)
                 continue
             try:
                 new = transcripts.convert(
@@ -157,10 +172,12 @@ class DownloadWorker(QThread):
                 if os.path.abspath(new) != os.path.abspath(final):
                     os.replace(new, final)
                 dbg(f"subtitle converted: {final}")
+                done.append(final)
                 if sidecar != final:
                     os.remove(sidecar)
             except Exception as e:  # noqa: BLE001
                 dbg(f"subtitle convert failed: {e}")
+        return done
 
 
 def find_ffmpeg():
@@ -195,7 +212,7 @@ class DownloadManager(QObject):
         self._pending = []       # list of (task_id, url, quality)
         self._running = {}       # task_id -> worker
 
-    def submit(self, url, quality=None, subtitles=None):
+    def submit(self, url, quality=None, subtitles=None, transcript_only=False):
         url = (url or "").strip()
         if not url:
             return None
@@ -203,7 +220,7 @@ class DownloadManager(QObject):
             url = "https://" + url
         task_id = self._next_id
         self._next_id += 1
-        self._pending.append((task_id, url, quality, subtitles))
+        self._pending.append((task_id, url, quality, subtitles, transcript_only))
         self.queue_changed.emit()
         self._pump()
         return task_id
@@ -211,8 +228,8 @@ class DownloadManager(QObject):
     def _pump(self):
         limit = max(1, int(self.settings.get("simultaneous_downloads")))
         while self._pending and len(self._running) < limit:
-            task_id, url, quality, subtitles = self._pending.pop(0)
-            w = DownloadWorker(url, self.settings, quality, subtitles)
+            task_id, url, quality, subtitles, t_only = self._pending.pop(0)
+            w = DownloadWorker(url, self.settings, quality, subtitles, t_only)
             w.progress.connect(lambda info, tid=task_id: self.task_progress.emit(tid, info))
             w.finished_ok.connect(lambda res, tid=task_id: self._done(tid, res))
             w.failed.connect(lambda msg, tid=task_id: self._fail(tid, msg))
@@ -246,7 +263,7 @@ class DownloadManager(QObject):
             self.queue_changed.emit()
 
     def resume(self, task_id, url, quality=None):
-        self._pending.append((task_id, url, quality, subtitles))
+        self._pending.append((task_id, url, quality, subtitles, transcript_only))
         self.queue_changed.emit()
         self._pump()
 

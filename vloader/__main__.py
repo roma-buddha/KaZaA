@@ -33,6 +33,9 @@ def main(argv=None):
                    help="include auto-generated captions (default)")
     p.add_argument("--no-sub-auto", dest="sub_auto", action="store_false",
                    help="manual captions only")
+    p.add_argument("--transcript-only", action="store_true",
+                   help="download only the transcript, skip the video "
+                        "(requires --subtitles)")
     p.add_argument("--exit", nargs="?", const="prompt", choices=["prompt", "force"],
                    help="exit after finishing ('force' = no prompt)")
     p.add_argument("--install-plugins", action="store_true",
@@ -68,8 +71,9 @@ def main(argv=None):
                                    if l.strip()] or ["en"],
                          "auto": args.sub_auto}
         for url in args.url:
-            tid = win.downloads.submit(url, quality=args.quality,
-                                       subtitles=subtitles)
+            tid = win.downloads.submit(
+                url, quality=args.quality, subtitles=subtitles,
+                transcript_only=args.transcript_only)
             if tid:
                 win.activity.add_task(tid, url)
         if args.convert_to:

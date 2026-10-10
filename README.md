@@ -116,6 +116,7 @@ python -m vloader --install-plugins        # browser extension instructions
 | `--subtitles md|srt|vtt`\|srt\|vtt` | also download the transcript in that format |
 | `--sub-langs en,de` | transcript languages (default: en) |
 | `--sub-auto` / `--no-sub-auto` | include auto-generated captions (default on) |
+| `--transcript-only` | skip the video, download just the transcript |
 | `--exit [force]` | exit after finishing (`force` skips prompts) |
 | `--install-plugins` / `--uninstall-plugins` | print extension instructions |
 | `--version` | print version |

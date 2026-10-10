@@ -169,9 +169,11 @@ class MainWindow(QMainWindow):
         self._auto_conv_q = opts.get("conv_quality") or "normal"
         self._open_after = bool(opts.get("open_after"))
         subtitles = opts.get("subtitles")
+        transcript_only = bool(opts.get("transcript_only")) and bool(subtitles)
         self.set_page(1)
         for url in urls:
-            tid = self.downloads.submit(url, subtitles=subtitles)
+            tid = self.downloads.submit(url, subtitles=subtitles,
+                                        transcript_only=transcript_only)
             if tid:
                 self.activity.add_task(tid, url, "download")
                 self.history.add("download", name=url.split("/")[-1][:80], url=url, status="started")

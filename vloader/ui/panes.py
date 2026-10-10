@@ -99,6 +99,12 @@ class DownloadPane(QWidget):
         self.sub_auto = QCheckBox(i18n.tr("sub_auto"))
         self.sub_auto.setChecked(True)
         form.addRow("", self.sub_auto)
+
+        self.sub_only = QCheckBox(i18n.tr("transcript_only"))
+        self.sub_only.setEnabled(False)
+        form.addRow("", self.sub_only)
+        self.sub_fmt.currentIndexChanged.connect(
+            lambda _i: self.sub_only.setEnabled(bool(self.sub_fmt.currentData())))
         lay.addLayout(form)
 
         self.start_btn = QPushButton(i18n.tr("start_download"))
@@ -139,6 +145,7 @@ class DownloadPane(QWidget):
             "conv_quality": self.conv_quality.currentData(),
             "open_after": self.open_after.isChecked(),
             "subtitles": subtitles,
+            "transcript_only": self.sub_only.isChecked() and bool(sub_fmt),
         }
         self.on_submit(urls, opts)
 
