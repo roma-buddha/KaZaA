@@ -168,9 +168,10 @@ class MainWindow(QMainWindow):
         self._auto_conv_fmt = opts.get("auto_convert_to") or ""
         self._auto_conv_q = opts.get("conv_quality") or "normal"
         self._open_after = bool(opts.get("open_after"))
+        subtitles = opts.get("subtitles")
         self.set_page(1)
         for url in urls:
-            tid = self.downloads.submit(url)
+            tid = self.downloads.submit(url, subtitles=subtitles)
             if tid:
                 self.activity.add_task(tid, url, "download")
                 self.history.add("download", name=url.split("/")[-1][:80], url=url, status="started")
@@ -213,12 +214,33 @@ class MainWindow(QMainWindow):
 
     def _submit_convert(self, opts):
         self.set_page(1)
+        if (opts["src"].lower().endswith((".srt", ".vtt"))
+                and opts["fmt"] in ("md", "srt", "vtt")):
+            self._convert_transcript(opts)
+            return
         self._queue_convert(opts["src"], opts["fmt"], opts["quality"],
                             trim_start=opts.get("trim_start"),
                             trim_end=opts.get("trim_end"),
                             volume=opts.get("volume"),
                             extra=opts.get("merge") or None,
                             delete_original=opts.get("delete_original", False))
+
+    def _convert_transcript(self, opts):
+        """Convert a .srt/.vtt transcript to md/srt/vtt (no ffmpeg needed)."""
+        from .. import transcripts
+        tid = self._conv_next
+        self._conv_next += 1
+        self.activity.add_task(tid, os.path.basename(opts["src"]), "convert")
+        try:
+            out = transcripts.convert(opts["src"], opts["fmt"])
+            self.activity.set_done(tid, out)
+            self.history.add("convert", os.path.basename(opts["src"]),
+                             status="done", output=out)
+        except Exception as e:  # noqa: BLE001
+            self.activity.set_error(tid, f"{type(e).__name__}: {e}")
+            self.history.add("convert", os.path.basename(opts["src"]),
+                             status=str(e)[:40])
+        self._maybe_after_done()
 
     def _queue_convert(self, src, fmt, quality, trim_start=None, trim_end=None,
                        volume=None, extra=None, delete_original=False,

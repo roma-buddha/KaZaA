@@ -35,6 +35,14 @@ need more. No accounts, no ads, no telemetry, no license checks.
 - **Quality presets** — High / Normal / Low (CRF-tuned)
 - Optional "delete original after conversion"
 
+### Transcripts
+- **Download video transcripts** alongside any video — manual or
+  auto-generated captions, multiple languages at once
+- **Export as Markdown (.md)** — heading, language + source metadata, and
+  per-line `[mm:ss]` timestamps; also exportable as **SRT** or **WebVTT**
+- **Convert existing transcripts** — load any `.`--subtitles md|srt|vtt`` / `.vtt` file into the
+  Convert pane and turn it into Markdown (timestamps optional)
+
 ### Record
 - **Screen recorder** — full screen or a drag-selected region
 - **MP4 output** (H.264, yuv420p) playable everywhere
@@ -105,6 +113,9 @@ python -m vloader --install-plugins        # browser extension instructions
 | `--quality N` | `best`, `1080`, `720`, `480`, `360`, `240`, `worst` |
 | `--output-dir DIR` | override download directory |
 | `--convert-to FMT` | auto-convert finished downloads |
+| `--subtitles md|srt|vtt`\|srt\|vtt` | also download the transcript in that format |
+| `--sub-langs en,de` | transcript languages (default: en) |
+| `--sub-auto` / `--no-sub-auto` | include auto-generated captions (default on) |
 | `--exit [force]` | exit after finishing (`force` skips prompts) |
 | `--install-plugins` / `--uninstall-plugins` | print extension instructions |
 | `--version` | print version |
@@ -120,6 +131,7 @@ vloader/
   converter.py       ffmpeg subprocess wrapper: convert/trim/volume/merge
   recorder.py        ffmpeg gdigrab capture + Win32 global hotkeys
   bridgeserver.py    local HTTP bridge for browser extensions
+  transcripts.py     VTT/SRT parser + Markdown/SRT/VTT export
   afterdone.py       after-finish power actions
   i18n.py            JSON dictionary i18n with English fallback
   i18n/*.json        17 language files

@@ -25,6 +25,14 @@ def main(argv=None):
     p.add_argument("--quality", help="e.g. 720, 1080, best, worst")
     p.add_argument("--output-dir", help="override download directory")
     p.add_argument("--convert-to", help="auto-convert to format (mp4, mp3, ...)")
+    p.add_argument("--subtitles", choices=["md", "srt", "vtt"],
+                   help="also download the video transcript in this format")
+    p.add_argument("--sub-langs", default="en",
+                   help="comma-separated transcript languages (default: en)")
+    p.add_argument("--sub-auto", action="store_true", default=True,
+                   help="include auto-generated captions (default)")
+    p.add_argument("--no-sub-auto", dest="sub_auto", action="store_false",
+                   help="manual captions only")
     p.add_argument("--exit", nargs="?", const="prompt", choices=["prompt", "force"],
                    help="exit after finishing ('force' = no prompt)")
     p.add_argument("--install-plugins", action="store_true",
@@ -53,8 +61,15 @@ def main(argv=None):
         win.settings.set("save_to", args.output_dir)
     if args.url:
         win.set_page(1)
+        subtitles = None
+        if args.subtitles:
+            subtitles = {"format": args.subtitles,
+                         "langs": [l.strip() for l in args.sub_langs.split(",")
+                                   if l.strip()] or ["en"],
+                         "auto": args.sub_auto}
         for url in args.url:
-            tid = win.downloads.submit(url, quality=args.quality)
+            tid = win.downloads.submit(url, quality=args.quality,
+                                       subtitles=subtitles)
             if tid:
                 win.activity.add_task(tid, url)
         if args.convert_to:

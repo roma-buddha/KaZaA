@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
 from .. import i18n
 from ..converter import ALL_FORMATS, AUDIO_FORMATS
 
+TRANSCRIPT_FORMATS = ["md", "srt", "vtt"]
+
 QUALITIES = ["best", "1080", "720", "480", "360", "240", "worst"]
 
 
@@ -81,6 +83,22 @@ class DownloadPane(QWidget):
 
         self.open_after = QCheckBox(i18n.tr("open_folder_after"))
         form.addRow("", self.open_after)
+
+        self.sub_fmt = QComboBox()
+        self.sub_fmt.addItem("(off)", "")
+        for f in ("md", "srt", "vtt"):
+            label = {"md": "Markdown (.md)", "srt": "SubRip (.srt)",
+                     "vtt": "WebVTT (.vtt)"}[f]
+            self.sub_fmt.addItem(label, f)
+        form.addRow(i18n.tr("subtitles"), self.sub_fmt)
+
+        self.sub_langs = QLineEdit()
+        self.sub_langs.setPlaceholderText("en, de, ru ...")
+        form.addRow(i18n.tr("sub_langs"), self.sub_langs)
+
+        self.sub_auto = QCheckBox(i18n.tr("sub_auto"))
+        self.sub_auto.setChecked(True)
+        form.addRow("", self.sub_auto)
         lay.addLayout(form)
 
         self.start_btn = QPushButton(i18n.tr("start_download"))
@@ -107,12 +125,20 @@ class DownloadPane(QWidget):
                 if u.strip()]
         if not urls:
             urls = [u.strip() for u in self.url_edit.text().split() if "://" in u]
+        sub_fmt = self.sub_fmt.currentData()
+        subtitles = None
+        if sub_fmt:
+            langs = [l.strip() for l in self.sub_langs.text().split(",")
+                     if l.strip()] or ["en"]
+            subtitles = {"format": sub_fmt, "langs": langs,
+                         "auto": self.sub_auto.isChecked()}
         opts = {
             "quality": self.quality.currentData(),
             "save_to": self.dir_edit.text().strip(),
             "auto_convert_to": self.auto_conv.currentData(),
             "conv_quality": self.conv_quality.currentData(),
             "open_after": self.open_after.isChecked(),
+            "subtitles": subtitles,
         }
         self.on_submit(urls, opts)
 
@@ -142,7 +168,7 @@ class ConvertPane(QWidget):
         form.addRow(i18n.tr("browse_file"), file_row)
 
         self.fmt = QComboBox()
-        for f in ALL_FORMATS:
+        for f in ALL_FORMATS + TRANSCRIPT_FORMATS:
             self.fmt.addItem(f.upper(), f)
         self.fmt.setCurrentIndex(0)
         form.addRow(i18n.tr("convert_to"), self.fmt)
