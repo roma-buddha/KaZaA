@@ -29,6 +29,18 @@ need more. No accounts, no ads, no telemetry, no license checks.
   start / pause / stop, reorder, checkboxes
 - **History** — persistent log of every download and conversion
 
+### Torrents
+- **Paste a magnet link or .torrent file** — local files and http(s) links
+  both work; torrents land in the same queue as video downloads, with the
+  same pause / stop / resume controls
+- **libtorrent engine** — the same BitTorrent core qBittorrent is built on
+  (DHT, peer exchange, sequential download)
+- **Sequential by default** — pieces arrive in order, so a downloading video
+  is already playable (qBittorrent's "download in sequential order")
+- **Pause keeps your progress** — stopping a torrent never discards finished
+  pieces; resume re-checks the data and continues where it left off
+- **Live stats** — download speed and peer count in the activity row
+
 ### Live streams
 - **Record live streams** — paste a live page URL (e.g. a webcam room) and
   VLoader records it while it plays, with both video and audio

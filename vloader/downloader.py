@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 import yt_dlp
 
 from .settings import Settings
-from . import spotify, tagger
+from . import spotify, tagger, torrent
 
 
 class DownloadCancelled(Exception):
@@ -802,11 +802,12 @@ class DownloadManager(QObject):
         url = (url or "").strip()
         if not url:
             return None
-        m = re.match(r"^spotify:(track|album|playlist):([A-Za-z0-9]+)$", url)
-        if m:
-            url = f"https://open.spotify.com/{m.group(1)}/{m.group(2)}"
-        elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
-            url = "https://" + url
+        if not torrent.is_torrent_source(url):
+            m = re.match(r"^spotify:(track|album|playlist):([A-Za-z0-9]+)$", url)
+            if m:
+                url = f"https://open.spotify.com/{m.group(1)}/{m.group(2)}"
+            elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+                url = "https://" + url
         task_id = self._next_id
         self._next_id += 1
         self._pending.append((task_id, url, quality, subtitles, transcript_only))
@@ -818,7 +819,11 @@ class DownloadManager(QObject):
         limit = max(1, int(self.settings.get("simultaneous_downloads")))
         while self._pending and len(self._running) < limit:
             task_id, url, quality, subtitles, t_only = self._pending.pop(0)
-            w = DownloadWorker(url, self.settings, quality, subtitles, t_only)
+            if torrent.is_torrent_source(url):
+                w = torrent.TorrentWorker(url, self.settings)
+            else:
+                w = DownloadWorker(url, self.settings, quality, subtitles,
+                                   t_only)
             w.progress.connect(lambda info, tid=task_id: self.task_progress.emit(tid, info))
             w.finished_ok.connect(lambda res, tid=task_id: self._done(tid, res))
             w.failed.connect(lambda msg, tid=task_id: self._fail(tid, msg))
