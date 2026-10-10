@@ -115,5 +115,20 @@
   "subtitles": "Also download transcript",
   "sub_langs": "Transcript languages",
   "sub_auto": "Include auto-generated captions",
-  "transcript_only": "Transcript only (skip video)"
+  "transcript_only": "Transcript only (skip video)",
+  "tab_music": "Music",
+  "music_search_ph": "Search YouTube music — artist, song, lyrics...",
+  "music_search": "Search",
+  "music_searching": "Searching...",
+  "music_found": "{n} results",
+  "music_none": "No results found.",
+  "music_failed": "Failed: {msg}",
+  "music_preview": "Preview",
+  "music_stop": "Stop",
+  "music_download": "Download",
+  "music_previewing": "Fetching preview...",
+  "music_preview_hint": "Preview playing (first 20 seconds)",
+  "music_col_title": "Title",
+  "music_col_channel": "Channel",
+  "music_col_length": "Length"
 }

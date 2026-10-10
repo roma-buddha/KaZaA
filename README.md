@@ -41,6 +41,15 @@ need more. No accounts, no ads, no telemetry, no license checks.
   pieces; resume re-checks the data and continues where it left off
 - **Live stats** — download speed and peer count in the activity row
 
+### Music search
+- **Search bar for YouTube music** — type an artist, song or lyrics; results
+  come back as a clean list (title, channel, length — no clutter)
+- **20-second preview** — hear a song before downloading; streamed via the
+  audio track only (no video), played in-app, one click to stop
+- **One-click mp3** — the Download button saves the audio track as a tagged
+  320 kbps-quality mp3 (title + artist written into the file), and the
+  temporary intermediate is removed automatically
+
 ### Live streams
 - **Record live streams** — paste a live page URL (e.g. a webcam room) and
   VLoader records it while it plays, with both video and audio

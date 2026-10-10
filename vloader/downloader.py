@@ -19,6 +19,9 @@ class DownloadCancelled(Exception):
 
 
 def quality_to_formatsel(quality):
+    if quality == "music":
+        # audio-only stream, m4a/aac preferred (mp3 conversion downstream)
+        return "bestaudio[ext=m4a]/bestaudio/best"
     if quality == "best":
         return "bestvideo*+bestaudio/best"
     if quality == "worst":

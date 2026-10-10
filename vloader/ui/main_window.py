@@ -18,7 +18,7 @@ from ..history import History
 from ..settings import Settings
 from .activity import ActivityPane
 from .dialogs import AboutDialog, HistoryDialog, PreferencesDialog
-from .panes import ConvertPane, DownloadPane
+from .panes import ConvertPane, DownloadPane, MusicPane
 from .recorder_window import RecorderWindow
 
 VERSION = "1.0.0"
@@ -56,9 +56,11 @@ class MainWindow(QMainWindow):
         self.download_pane = DownloadPane(self.settings, self._submit_urls)
         self.activity = ActivityPane()
         self.convert_pane = ConvertPane(self.settings, self._submit_convert)
+        self.music_pane = MusicPane(self._download_song)
         pages = [("⬇  " + i18n.tr("tab_download"), self.download_pane),
                  ("≡  " + i18n.tr("tab_activity"), self.activity),
-                 ("⇄  " + i18n.tr("tab_convert"), self.convert_pane)]
+                 ("⇄  " + i18n.tr("tab_convert"), self.convert_pane),
+                 ("♫  " + i18n.tr("tab_music"), self.music_pane)]
         for label, widget in pages:
             self.nav.addItem(QListWidgetItem(label))
             self.stack.addWidget(widget)
@@ -72,7 +74,8 @@ class MainWindow(QMainWindow):
         cl.addWidget(self.nav)
         cl.addWidget(self.stack, 1)
         self.setCentralWidget(central)
-        self._pages = {"download": 0, "activity": 1, "convert": 2}
+        self._pages = {"download": 0, "activity": 1, "convert": 2, "music": 3}
+        self._music_meta = {}       # task_id -> {title, artist} for mp3 tagging
 
         self._build_menus()
 
@@ -186,7 +189,45 @@ class MainWindow(QMainWindow):
     def _on_dl_progress(self, tid, info):
         self.activity.update_task(tid, info)
 
+    def _download_song(self, r):
+        """Music pane: download a search result as tagged mp3."""
+        self.set_page(1)
+        tid = self.downloads.submit(r["url"], quality="music")
+        if tid:
+            self.activity.add_task(tid, r["url"], "download")
+            self._music_meta[tid] = {"title": r["title"],
+                                     "artist": r["artist"]}
+            self.history.add("download", name=r["title"][:80], url=r["url"],
+                             status="started")
+        self._refresh_status()
+
+    def _finish_music(self, tid, res, meta):
+        """Downloaded audio -> tag in place (mp3) or transcode to mp3."""
+        from ..debuglog import log as dbg
+        out = res.get("output", "")
+        dbg(f"_finish_music tid={tid} out={out}")
+        if not out or not os.path.exists(out):
+            self.activity.set_error(tid, "download produced no file")
+            return
+        if out.lower().endswith(".mp3"):
+            from .. import tagger
+            try:
+                tagger.tag_media_file(out, **meta)
+            except Exception as e:  # noqa: BLE001
+                dbg(f"music tag failed: {e}")
+            self.activity.set_done(tid, out)
+            self.history.update_last(status="done", output=out,
+                                     size=os.path.getsize(out))
+        else:
+            self._queue_convert(out, "mp3", "high", task_id=tid, meta=meta,
+                                delete_original=True)
+        self._maybe_after_done()
+
     def _on_dl_finished(self, tid, res):
+        meta = self._music_meta.pop(tid, None)
+        if meta is not None and not res.get("stopped"):
+            self._finish_music(tid, res, meta)
+            return
         if res.get("stopped"):
             self.activity.set_done(tid, res.get("output", ""), stopped=True)
             self.history.update_last(status="stopped (saved)")
@@ -462,5 +503,6 @@ class MainWindow(QMainWindow):
     def closeEvent(self, e):
         self.settings.set("window_geometry", bytes(self.saveGeometry().toHex()).decode())
         self.settings.save()
+        self.music_pane.cleanup()
         self.bridge.stop()
         super().closeEvent(e)

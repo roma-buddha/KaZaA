@@ -167,6 +167,7 @@ def probe_duration(path):
             [ffprobe, "-v", "quiet", "-show_entries", "format=duration",
              "-of", "csv=p=0", path],
             capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
             stdin=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return float(out.stdout.strip())

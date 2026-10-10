@@ -1,14 +1,16 @@
 """Download and Convert panes."""
 import os
 
-from PySide6.QtCore import Qt, QTime
+from PySide6.QtCore import Qt, QThread, QTime, QUrl, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
-                               QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QPushButton, QRadioButton,
-                               QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
+                               QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
+                               QLabel, QLineEdit, QListWidget, QPushButton,
+                               QRadioButton, QSpinBox, QTableWidget,
+                               QTableWidgetItem, QTimeEdit, QVBoxLayout, QWidget)
 
 from .. import i18n
 from ..converter import ALL_FORMATS, AUDIO_FORMATS
+from ..music import PreviewFetcher
 
 TRANSCRIPT_FORMATS = ["md", "srt", "vtt"]
 
@@ -278,3 +280,185 @@ class ConvertPane(QWidget):
                       for i in range(self.merge_list.count())],
             "delete_original": self.del_orig.isChecked(),
         })
+
+
+class _MusicSearchWorker(QThread):
+    done = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, query, parent=None):
+        super().__init__(parent)
+        self.query = query
+
+    def run(self):
+        from .. import music
+        try:
+            self.done.emit(music.search(self.query))
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(f"{type(e).__name__}: {e}")
+
+
+class MusicPane(QWidget):
+    """Search YouTube music: clean list, 20s preview, mp3 download."""
+
+    def __init__(self, on_download, parent=None):
+        super().__init__(parent)
+        self.on_download = on_download
+        self._results = []
+        self._search_worker = None
+        self._fetcher = None
+        self._preview_row = None       # row currently previewing (-1 = none)
+        self._preview_btns = {}        # row -> button
+        self._preview_files = []
+
+        from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+        self._player = QMediaPlayer(self)
+        self._audio = QAudioOutput(self)
+        self._audio.setVolume(0.8)
+        self._player.setAudioOutput(self._audio)
+        self._player.mediaStatusChanged.connect(self._media_status)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(28, 24, 28, 20)
+        lay.setSpacing(12)
+        h = QLabel(i18n.tr("tab_music"))
+        h.setObjectName("h1")
+        lay.addWidget(h)
+
+        row = QHBoxLayout()
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText(i18n.tr("music_search_ph"))
+        self.search_edit.returnPressed.connect(self._search)
+        row.addWidget(self.search_edit, 1)
+        self.search_btn = QPushButton(i18n.tr("music_search"))
+        self.search_btn.clicked.connect(self._search)
+        row.addWidget(self.search_btn)
+        lay.addLayout(row)
+
+        self.status_lbl = QLabel("")
+        self.status_lbl.setObjectName("dim")
+        lay.addWidget(self.status_lbl)
+
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels([
+            i18n.tr("music_col_title"), i18n.tr("music_col_channel"),
+            i18n.tr("music_col_length"), ""])
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(36)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setShowGrid(False)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.setColumnWidth(2, 70)
+        self.table.setColumnWidth(3, 210)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        lay.addWidget(self.table, 1)
+
+    # ---- search ----------------------------------------------------------
+    def _search(self):
+        query = self.search_edit.text().strip()
+        if not query or (self._search_worker and self._search_worker.isRunning()):
+            return
+        self._stop_preview()
+        self.status_lbl.setText(i18n.tr("music_searching"))
+        self.search_btn.setEnabled(False)
+        self._search_worker = _MusicSearchWorker(query, self)
+        self._search_worker.done.connect(self._show_results)
+        self._search_worker.failed.connect(self._search_failed)
+        self._search_worker.start()
+
+    def _search_failed(self, msg):
+        self.search_btn.setEnabled(True)
+        self.status_lbl.setText(i18n.tr("music_failed", msg=msg))
+
+    def _show_results(self, results):
+        self.search_btn.setEnabled(True)
+        self._results = results
+        self.table.setRowCount(0)
+        self._preview_btns = {}
+        if not results:
+            self.status_lbl.setText(i18n.tr("music_none"))
+            return
+        self.status_lbl.setText(i18n.tr("music_found", n=len(results)))
+        for r in results:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            self.table.setItem(row, 0, QTableWidgetItem(r["title"]))
+            self.table.setItem(row, 1, QTableWidgetItem(r["artist"]))
+            self.table.setItem(row, 2, QTableWidgetItem(self._fmt_len(
+                r["duration"])))
+            btns = QWidget()
+            bl = QHBoxLayout(btns)
+            bl.setContentsMargins(4, 2, 4, 2)
+            bl.setSpacing(6)
+            prev = QPushButton(i18n.tr("music_preview"))
+            prev.setFixedWidth(88)
+            prev.clicked.connect(lambda _, x=row: self._toggle_preview(x))
+            dl = QPushButton(i18n.tr("music_download"))
+            dl.setFixedWidth(88)
+            dl.clicked.connect(lambda _, res=r: self.on_download(res))
+            bl.addStretch(1)
+            bl.addWidget(prev)
+            bl.addWidget(dl)
+            self.table.setCellWidget(row, 3, btns)
+            self._preview_btns[row] = prev
+
+    @staticmethod
+    def _fmt_len(sec):
+        if not sec:
+            return ""
+        return f"{sec // 60}:{sec % 60:02d}"
+
+    # ---- preview ---------------------------------------------------------
+    def _toggle_preview(self, row):
+        if self._preview_row == row:
+            self._stop_preview()
+            return
+        if row >= len(self._results):
+            return
+        self._stop_preview()
+        self.status_lbl.setText(i18n.tr("music_previewing"))
+        self._fetcher = PreviewFetcher(
+            self._results[row]["url"], self)
+        self._fetcher.done.connect(lambda p, x=row: self._play_preview(x, p))
+        self._fetcher.failed.connect(self._preview_failed)
+        self._fetcher.start()
+        self._preview_row = row
+
+    def _play_preview(self, row, path):
+        self._preview_files.append(path)
+        self._player.setSource(QUrl.fromLocalFile(path))
+        self._player.play()
+        if row in self._preview_btns:
+            self._preview_btns[row].setText(i18n.tr("music_stop"))
+        self.status_lbl.setText(i18n.tr("music_preview_hint"))
+
+    def _preview_failed(self, msg):
+        self.status_lbl.setText(i18n.tr("music_failed", msg=msg))
+        self._preview_row = None
+
+    def _media_status(self, status):
+        from PySide6.QtMultimedia import QMediaPlayer
+        if status in (QMediaPlayer.EndOfMedia, QMediaPlayer.InvalidMedia):
+            self._stop_preview()
+
+    def _stop_preview(self):
+        self._player.stop()
+        if self._fetcher and self._fetcher.isRunning():
+            self._fetcher.terminate()
+            self._fetcher.wait(2000)
+        self._fetcher = None
+        if self._preview_row in self._preview_btns:
+            self._preview_btns[self._preview_row].setText(
+                i18n.tr("music_preview"))
+        self._preview_row = None
+
+    def cleanup(self):
+        """Delete temp preview files (called on main window close)."""
+        self._stop_preview()
+        for p in self._preview_files:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        self._preview_files = []
