@@ -27,7 +27,7 @@ class History:
         except OSError:
             pass
 
-    def add(self, kind, name, url, output, status, size=0):
+    def add(self, kind, name, url="", output="", status="started", size=0):
         self.items.append({
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "kind": kind, "name": name, "url": url,

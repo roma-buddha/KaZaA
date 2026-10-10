@@ -3,7 +3,22 @@ import argparse
 import sys
 
 
+def _redirect_stderr():
+    """Windowed apps have no console; capture tracebacks in a log file."""
+    import os
+    try:
+        d = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"),
+                         "VLoader")
+        os.makedirs(d, exist_ok=True)
+        f = open(os.path.join(d, "stderr.log"), "a", encoding="utf-8")
+        sys.stderr = f
+        sys.stdout = f
+    except OSError:
+        pass
+
+
 def main(argv=None):
+    _redirect_stderr()
     p = argparse.ArgumentParser(prog="vloader",
                                 description="VLoader - video downloader/converter")
     p.add_argument("--url", action="append", help="URL to download (repeatable)")

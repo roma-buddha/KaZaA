@@ -65,7 +65,7 @@ class Recorder(QObject):
                                     "VLoader", f"record_{stamp}.mp4")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         ffmpeg = find_ffmpeg() or "ffmpeg"
-        args = [ffmpeg, "-y", "-hide_banner",
+        args = [ffmpeg, "-y", "-nostdin", "-hide_banner",
                 "-f", "gdigrab", "-framerate", str(framerate)]
         if rect:
             x, y, w, h = rect
@@ -79,6 +79,7 @@ class Recorder(QObject):
         try:
             self.proc = subprocess.Popen(
                 args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError:
             self.proc = None

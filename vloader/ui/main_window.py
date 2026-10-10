@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
             tid = self.downloads.submit(url)
             if tid:
                 self.activity.add_task(tid, url, "download")
-                self.history.add("download", url.split("/")[-1][:80], url, "started")
+                self.history.add("download", name=url.split("/")[-1][:80], url=url, status="started")
         self._refresh_status()
 
     def _on_dl_progress(self, tid, info):
@@ -183,8 +183,10 @@ class MainWindow(QMainWindow):
         self.activity.set_done(tid, res.get("output", ""))
         self.history.update_last(status="done", output=res.get("output", ""),
                                  size=res.get("size", 0))
+        from ..debuglog import log as dbg
         out = res.get("output", "")
         fmt = getattr(self, "_auto_conv_fmt", "")
+        dbg(f"on_dl_finished tid={tid} out={out} auto_conv={fmt}")
         if fmt and out:
             self._queue_convert(out, fmt, getattr(self, "_auto_conv_q", "normal"),
                                 delete_original=self.settings.get(
@@ -221,20 +223,28 @@ class MainWindow(QMainWindow):
     def _queue_convert(self, src, fmt, quality, trim_start=None, trim_end=None,
                        volume=None, extra=None, delete_original=False,
                        task_id=None):
+        from ..debuglog import log as dbg
+        dbg(f"_queue_convert src={src} fmt={fmt} task_id={task_id}")
         tid = task_id if task_id is not None else self._conv_next
         self._conv_next += 1
         self._pending_conv.append((tid, src, fmt, quality, trim_start, trim_end,
                                    volume, extra, delete_original))
+        dbg("queue: pre-add")
         if task_id is None:
             self.activity.add_task(tid, os.path.basename(src), "convert")
         else:
             self.activity.set_pending_convert(tid)
-        self.history.add("convert", os.path.basename(src), "", "started")
+        dbg("queue: pre-history")
+        self.history.add("convert", name=os.path.basename(src), status="started")
+        dbg("queue: pre-pump")
         self._pump_converts()
+        dbg("queue: post-pump")
 
     def _pump_converts(self):
         limit = max(1, int(self.settings.get("simultaneous_converts")))
         running = sum(1 for w in self.convert_workers.values() if w.isRunning())
+        from ..debuglog import log as dbg
+        dbg(f"_pump_converts pending={len(self._pending_conv)} running={running}")
         while self._pending_conv and running < limit:
             (tid, src, fmt, quality, ts, te, vol, extra, delo) = self._pending_conv.pop(0)
             w = ConvertWorker(src, fmt, quality, ts, te, vol, extra, delo)
@@ -247,6 +257,8 @@ class MainWindow(QMainWindow):
             running += 1
 
     def _conv_done(self, tid, res, src):
+        from ..debuglog import log as dbg
+        dbg(f"_conv_done tid={tid} out={res.get('output')}")
         self.convert_workers.pop(tid, None)
         self.activity.set_done(tid, res.get("output", ""))
         self.history.update_last(status="done", output=res.get("output", ""))
@@ -341,6 +353,7 @@ class MainWindow(QMainWindow):
         tid = self.downloads.submit(url)
         if tid:
             self.activity.add_task(tid, url, "download")
+            self.history.add("download", name=url.split("/")[-1][:80], url=url, status="started")
 
     # ---- dialogs / settings ----------------------------------------------
     def _prefs(self):

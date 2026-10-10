@@ -46,7 +46,7 @@ def build_convert_args(src, fmt, quality="normal", trim_start=None, trim_end=Non
                        volume=None, extra_inputs=None):
     """Build an ffmpeg argv. extra_inputs => merge mode (concat all inputs)."""
     inputs = [src] + list(extra_inputs or [])
-    args = [find_ffmpeg() or "ffmpeg", "-y", "-hide_banner"]
+    args = [find_ffmpeg() or "ffmpeg", "-y", "-nostdin", "-hide_banner"]
     for inp in inputs:
         args += ["-i", inp]
     if len(inputs) > 1:
@@ -116,18 +116,25 @@ class ConvertWorker(QThread):
             })
 
     def run(self):
+        from .debuglog import log as dbg
+        dbg(f"ConvertWorker.run start args={self.args[:6]}... out={self.args[-1]}")
         try:
             self._proc = subprocess.Popen(
                 self.args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
                 text=True, encoding="utf-8", errors="replace",
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             out_path = self.args[-1]
+            dbg("popen ok, probing duration")
             duration_s = probe_duration(self.src)
+            dbg(f"duration={duration_s}")
             for line in self._proc.stdout:
                 if self._cancelled:
                     break
                 self._parse_progress(line, duration_s)
+            dbg("read loop done")
             rc = self._proc.wait()
+            dbg(f"ffmpeg rc={rc}")
             if self._cancelled:
                 self.failed.emit("cancelled")
             elif rc != 0 or not os.path.exists(out_path):
@@ -140,6 +147,7 @@ class ConvertWorker(QThread):
                         pass
                 self.finished_ok.emit({"output": out_path})
         except Exception as e:  # noqa: BLE001
+            dbg(f"ConvertWorker exception {type(e).__name__}: {e}")
             self.failed.emit(f"{type(e).__name__}: {e}")
 
 
@@ -151,7 +159,8 @@ def probe_duration(path):
         out = subprocess.run(
             [ffprobe, "-v", "quiet", "-show_entries", "format=duration",
              "-of", "csv=p=0", path],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True, text=True, timeout=30,
+            stdin=subprocess.DEVNULL)
         return float(out.stdout.strip())
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return 0
