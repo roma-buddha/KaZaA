@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Bundled binaries (download separately, see README)
+bin/
+!bin/.gitkeep
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Test / scratch output
+tools/out/
+tools/*.png
+
+# OS
+Thumbs.db
+.DS_Store
