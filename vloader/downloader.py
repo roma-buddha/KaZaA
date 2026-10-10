@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 import yt_dlp
 
 from .settings import Settings
-from . import spotify
+from . import spotify, tagger
 
 
 class DownloadCancelled(Exception):
@@ -159,9 +159,20 @@ class DownloadWorker(QThread):
                         if os.path.exists(cand):
                             out = cand
                             break
+                # record song/video info in the file itself
+                artist = ((last or {}).get("artist")
+                          or (last or {}).get("channel")
+                          or (last or {}).get("uploader"))
+                year = str((last or {}).get("upload_date") or "")[:4]
+                if (not self.transcript_only and out
+                        and os.path.exists(out) and tagger.is_taggable(out)):
+                    tagger.tag_media_file(out, title=name, artist=artist,
+                                          year=year or None)
                 self.finished_ok.emit({"output": out, "name": name, "size": size,
                                        "transcripts": transcripts_done,
-                                       "transcript_only": self.transcript_only})
+                                       "transcript_only": self.transcript_only,
+                                       "title": name, "artist": artist,
+                                       "year": year or None})
         except DownloadCancelled:
             if self._live and self._partial and os.path.exists(self._partial):
                 repaired = self._repair_live(self._partial)
@@ -352,6 +363,7 @@ class DownloadWorker(QThread):
         """
         from .debuglog import log as dbg
         coll = spotify.resolve(self.url)
+        spotify.enrich(coll)
         tracks = coll["tracks"]
         n = len(tracks)
         dl = self.settings.download_dir()
@@ -483,8 +495,13 @@ class DownloadWorker(QThread):
                 "-metadata", f"artist={artists}"]
         if tr.get("album"):
             cmd += ["-metadata", f"album={tr['album']}"]
-        if n > 1:
-            cmd += ["-metadata", f"track={i + 1}"]
+        if tr.get("year"):
+            cmd += ["-metadata", f"date={tr['year']}"]
+        if tr.get("genre"):
+            cmd += ["-metadata", f"genre={tr['genre']}"]
+        track_no = (i + 1) if n > 1 else (tr.get("track_no") or 0)
+        if track_no:
+            cmd += ["-metadata", f"track={track_no}"]
         cmd += [final]
         r = subprocess.run(cmd, capture_output=True, timeout=600,
                            stdin=subprocess.DEVNULL)

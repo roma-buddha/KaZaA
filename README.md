@@ -22,6 +22,9 @@ need more. No accounts, no ads, no telemetry, no license checks.
 - **Pause & resume** — interrupted downloads keep their partial file and continue
   where they left off
 - **Auto-convert on download** — e.g. always save as MP3 or MP4
+- **Metadata recorded in every file** — title, artist and year are written
+  into downloaded audio/video (visible in Windows Properties → Details),
+  and conversion outputs keep the tags
 - **Queue control** — configurable simultaneous downloads, per-task and batch
   start / pause / stop, reorder, checkboxes
 - **History** — persistent log of every download and conversion
@@ -42,8 +45,9 @@ need more. No accounts, no ads, no telemetry, no license checks.
 ### Spotify
 - **Paste any Spotify link** — a track, an album or a playlist (also accepts
   `spotify:track:…` URIs and `spotify.link` short links)
-- **Tagged MP3, 320 kbps** — every track is saved with proper ID3v2 tags
-  (title, artist, album, track number) and the cover art embedded
+- **Tagged MP3, 320 kbps** — every track is saved with full ID3v2 tags:
+  title, artist, album, year, track number and genre, plus the cover art
+  embedded (all visible in Windows file Properties → Details)
 - **Album / playlist folders** — collections download into their own folder
   (`Artist - Album/01 - Title.mp3`, playlists numbered with artist names)
 - Metadata (track list, covers) comes from Spotify's public embed pages —
@@ -52,6 +56,8 @@ need more. No accounts, no ads, no telemetry, no license checks.
   Spotify downloader uses, since Spotify's own streams are DRM-protected
 - Per-track progress in the Activity table; a track with no match is
   skipped and reported while the rest of the collection continues
+- Missing fields are enriched from the iTunes Search API (public, no
+  key): album, year, track number and genre
 
 ### Convert
 - **15 output formats** — MP4, MKV, AVI, MOV, WMV, FLV, WebM, XviD (video) and

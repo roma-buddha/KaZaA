@@ -198,10 +198,12 @@ class MainWindow(QMainWindow):
         fmt = getattr(self, "_auto_conv_fmt", "")
         dbg(f"on_dl_finished tid={tid} out={out} auto_conv={fmt}")
         if fmt and out and not res.get("spotify"):
+            meta = {"title": res.get("title"), "artist": res.get("artist"),
+                    "year": res.get("year")}
             self._queue_convert(out, fmt, getattr(self, "_auto_conv_q", "normal"),
                                 delete_original=self.settings.get(
                                     "delete_original_after_conversion"),
-                                task_id=tid)
+                                task_id=tid, meta=meta)
         elif self._open_after and out:
             self.locate_file(out)
         self._maybe_after_done()
@@ -253,13 +255,13 @@ class MainWindow(QMainWindow):
 
     def _queue_convert(self, src, fmt, quality, trim_start=None, trim_end=None,
                        volume=None, extra=None, delete_original=False,
-                       task_id=None):
+                       task_id=None, meta=None):
         from ..debuglog import log as dbg
         dbg(f"_queue_convert src={src} fmt={fmt} task_id={task_id}")
         tid = task_id if task_id is not None else self._conv_next
         self._conv_next += 1
         self._pending_conv.append((tid, src, fmt, quality, trim_start, trim_end,
-                                   volume, extra, delete_original))
+                                   volume, extra, delete_original, meta))
         dbg("queue: pre-add")
         if task_id is None:
             self.activity.add_task(tid, os.path.basename(src), "convert")
@@ -277,8 +279,10 @@ class MainWindow(QMainWindow):
         from ..debuglog import log as dbg
         dbg(f"_pump_converts pending={len(self._pending_conv)} running={running}")
         while self._pending_conv and running < limit:
-            (tid, src, fmt, quality, ts, te, vol, extra, delo) = self._pending_conv.pop(0)
-            w = ConvertWorker(src, fmt, quality, ts, te, vol, extra, delo)
+            (tid, src, fmt, quality, ts, te, vol, extra, delo,
+             meta) = self._pending_conv.pop(0)
+            w = ConvertWorker(src, fmt, quality, ts, te, vol, extra, delo,
+                              meta=meta)
             w.progress.connect(lambda info, i=tid: self.activity.update_task(i, info))
             w.finished_ok.connect(lambda res, i=tid, s=src: self._conv_done(i, res, s))
             w.failed.connect(lambda msg, i=tid: self._conv_failed(i, msg))

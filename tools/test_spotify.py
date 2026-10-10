@@ -118,6 +118,8 @@ else:
     tags = meta.get("format", {}).get("tags", {})
     print(f"[e2e] streams={list(zip(kinds, names))} dur={dur:.1f}s")
     print(f"[e2e] tags: title={tags.get('title')!r} artist={tags.get('artist')!r}")
+    print(f"[e2e]       album={tags.get('album')!r} date={tags.get('date')!r} "
+          f"genre={tags.get('genre')!r} track={tags.get('track')!r}")
     if "audio" not in kinds or names[kinds.index("audio")] != "mp3":
         failures.append(f"not an mp3: {names}")
     if "video" not in kinds:
@@ -128,6 +130,14 @@ else:
         failures.append(f"title tag wrong: {tags.get('title')!r}")
     if "Rick Astley" not in str(tags.get("artist", "")):
         failures.append(f"artist tag wrong: {tags.get('artist')!r}")
+    if "Whenever You Need Somebody" not in str(tags.get("album", "")):
+        failures.append(f"album tag wrong (iTunes enrich): {tags.get('album')!r}")
+    if str(tags.get("date", ""))[:4] != "1987":
+        failures.append(f"year tag wrong: {tags.get('date')!r}")
+    if "pop" not in str(tags.get("genre", "")).lower():
+        failures.append(f"genre tag wrong: {tags.get('genre')!r}")
+    if str(tags.get("track", "")) not in ("1", "1/12"):
+        failures.append(f"track number wrong: {tags.get('track')!r}")
     os.remove(out)
 
 print()

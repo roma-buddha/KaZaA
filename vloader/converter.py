@@ -92,12 +92,14 @@ class ConvertWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, src, fmt, quality="normal", trim_start=None, trim_end=None,
-                 volume=None, extra_inputs=None, delete_original=False, parent=None):
+                 volume=None, extra_inputs=None, delete_original=False, meta=None,
+                 parent=None):
         super().__init__(parent)
         self.args = build_convert_args(src, fmt, quality, trim_start, trim_end,
                                        volume, extra_inputs)
         self.src = src
         self.delete_original = delete_original
+        self.meta = meta or {}
         self._proc = None
         self._cancelled = False
 
@@ -140,6 +142,11 @@ class ConvertWorker(QThread):
             elif rc != 0 or not os.path.exists(out_path):
                 self.failed.emit(f"ffmpeg exited with code {rc}")
             else:
+                if self.meta:
+                    from . import tagger
+                    tagger.tag_media_file(
+                        out_path,
+                        **{k: v for k, v in self.meta.items() if v})
                 if self.delete_original and os.path.abspath(out_path) != os.path.abspath(self.src):
                     try:
                         os.remove(self.src)
