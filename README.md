@@ -48,6 +48,9 @@ need more. No accounts, no ads, no telemetry, no license checks.
 - **Tagged MP3, 320 kbps** — every track is saved with full ID3v2 tags:
   title, artist, album, year, track number and genre, plus the cover art
   embedded (all visible in Windows file Properties → Details)
+- **Format choice** — MP3 320 kbps (universal), or **FLAC / WAV** for a
+  lossless copy of the source audio (no re-encode loss; note the source
+  itself is lossy, so FLAC preserves rather than invents quality)
 - **Album / playlist folders** — collections download into their own folder
   (`Artist - Album/01 - Title.mp3`, playlists numbered with artist names)
 - Metadata (track list, covers) comes from Spotify's public embed pages —

@@ -8,6 +8,7 @@ ORG = "VLoader"
 DEFAULTS = {
     "save_to": "",                      # download output directory ("" = <Videos>/VLoader)
     "download_quality": "best",         # best | 1080 | 720 | 480 | 360 | 240 | worst
+    "spotify_format": "mp3",            # mp3 (320k) | flac (lossless) | wav
     "simultaneous_downloads": 3,
     "simultaneous_converts": 2,
     "auto_convert_to": "",              # "" = off, else target format e.g. "mp4"

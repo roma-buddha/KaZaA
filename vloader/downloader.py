@@ -450,7 +450,10 @@ class DownloadWorker(QThread):
 
     def _spotify_track(self, ydl, tr, i, n, target_dir, tmpdir, cover,
                        ffmpeg, coll):
-        """Download one track's audio and encode a tagged 320k MP3."""
+        """Download one track's audio and encode it with full metadata."""
+        fmt = (self.settings.get("spotify_format") or "mp3").lower()
+        if fmt not in ("mp3", "flac", "wav"):
+            fmt = "mp3"
         artists = tr.get("artists") or ""
         ydl.params["outtmpl"] = {
             "default": os.path.join(tmpdir, f"{i:03d}.%(ext)s")}
@@ -469,12 +472,12 @@ class DownloadWorker(QThread):
 
         if coll["kind"] == "track":
             fname = (f"{self._safe_name(artists)} - "
-                     f"{self._safe_name(tr['title'])}.mp3")
+                     f"{self._safe_name(tr['title'])}.{fmt}")
         elif coll["kind"] == "album":
-            fname = f"{i + 1:02d} - {self._safe_name(tr['title'])}.mp3"
+            fname = f"{i + 1:02d} - {self._safe_name(tr['title'])}.{fmt}"
         else:
             fname = (f"{i + 1:02d} - {self._safe_name(artists)} - "
-                     f"{self._safe_name(tr['title'])}.mp3")
+                     f"{self._safe_name(tr['title'])}.{fmt}")
         final = os.path.join(target_dir, fname)
         base, ext = os.path.splitext(final)
         k = 1
@@ -484,14 +487,21 @@ class DownloadWorker(QThread):
 
         cmd = [ffmpeg, "-y", "-nostdin", "-hide_banner", "-loglevel",
                "error", "-i", tmp]
-        if cover and os.path.exists(cover):
+        # RIFF/WAV has no attached-picture support
+        embed_cover = cover and os.path.exists(cover) and fmt in ("mp3", "flac")
+        if embed_cover:
             cmd += ["-i", cover, "-map", "0:a:0", "-map", "1:v:0",
                     "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
         else:
             cmd += ["-map", "0:a:0"]
-        cmd += ["-c:a", "libmp3lame", "-b:a", "320k",
-                "-id3v2_version", "3",
-                "-metadata", f"title={tr['title']}",
+        if fmt == "mp3":
+            cmd += ["-c:a", "libmp3lame", "-b:a", "320k",
+                    "-id3v2_version", "3"]
+        elif fmt == "flac":
+            cmd += ["-c:a", "flac"]
+        else:
+            cmd += ["-c:a", "pcm_s16le"]
+        cmd += ["-metadata", f"title={tr['title']}",
                 "-metadata", f"artist={artists}"]
         if tr.get("album"):
             cmd += ["-metadata", f"album={tr['album']}"]

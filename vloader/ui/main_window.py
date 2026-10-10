@@ -165,6 +165,8 @@ class MainWindow(QMainWindow):
             self.settings.save()
         if opts.get("quality"):
             self.settings.set("download_quality", opts["quality"])
+        if opts.get("spotify_format"):
+            self.settings.set("spotify_format", opts["spotify_format"])
         self._auto_conv_fmt = opts.get("auto_convert_to") or ""
         self._auto_conv_q = opts.get("conv_quality") or "normal"
         self._open_after = bool(opts.get("open_after"))

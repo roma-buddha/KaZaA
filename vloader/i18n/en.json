@@ -42,6 +42,7 @@
   "open_folder_after": "Open folder after download",
   "auto_convert": "Automatically convert to",
   "conv_quality": "Conversion Quality",
+  "spotify_format": "Spotify Download Format",
   "del_after": "Delete original file after conversion",
   "start_download": "Start Download",
   "browse_file": "Browse...",

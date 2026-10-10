@@ -82,6 +82,16 @@ class DownloadPane(QWidget):
         self.conv_quality.setCurrentIndex(1)
         form.addRow(i18n.tr("conv_quality"), self.conv_quality)
 
+        self.spot_fmt = QComboBox()
+        for label, v in (("MP3 · 320 kbps", "mp3"),
+                         ("FLAC · lossless", "flac"),
+                         ("WAV · lossless", "wav")):
+            self.spot_fmt.addItem(label, v)
+        cur = settings.get("spotify_format")
+        idx = self.spot_fmt.findData(cur)
+        self.spot_fmt.setCurrentIndex(idx if idx >= 0 else 0)
+        form.addRow(i18n.tr("spotify_format"), self.spot_fmt)
+
         self.open_after = QCheckBox(i18n.tr("open_folder_after"))
         form.addRow("", self.open_after)
 
@@ -144,6 +154,7 @@ class DownloadPane(QWidget):
             "save_to": self.dir_edit.text().strip(),
             "auto_convert_to": self.auto_conv.currentData(),
             "conv_quality": self.conv_quality.currentData(),
+            "spotify_format": self.spot_fmt.currentData(),
             "open_after": self.open_after.isChecked(),
             "subtitles": subtitles,
             "transcript_only": self.sub_only.isChecked() and bool(sub_fmt),

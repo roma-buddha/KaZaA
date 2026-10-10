@@ -140,6 +140,47 @@ else:
         failures.append(f"track number wrong: {tags.get('track')!r}")
     os.remove(out)
 
+# ---- 6. same track as lossless FLAC --------------------------------------
+st2 = Settings()
+st2.set("save_to", TESTDIR)
+st2.set("spotify_format", "flac")
+res2, err2 = {}, []
+w2 = DownloadWorker(TRACK, st2)
+w2.finished_ok.connect(lambda r: res2.update(r))
+w2.failed.connect(lambda m: err2.append(m))
+print("[e2e] downloading same track as FLAC...")
+w2.start()
+deadline = time.time() + 180
+while time.time() < deadline and w2.isRunning():
+    app.processEvents()
+    w2.wait(50)
+for _ in range(20):
+    app.processEvents()
+out2 = res2.get("output", "")
+print("[e2e] flac result:", {k: res2.get(k) for k in ("output", "size")})
+if err2 or not out2.endswith(".flac") or not os.path.exists(out2):
+    failures.append(f"flac e2e failed: err={err2} out={out2}")
+else:
+    p = subprocess.run(
+        [ffprobe, "-v", "error", "-print_format", "json",
+         "-show_format", "-show_streams", out2],
+        capture_output=True, text=True, timeout=60)
+    meta = json.loads(p.stdout or "{}")
+    streams = meta.get("streams", [])
+    kinds = [(s.get("codec_type"), s.get("codec_name")) for s in streams]
+    tags = meta.get("format", {}).get("tags", {})
+    print(f"[e2e] flac streams={kinds} tags: title={tags.get('title')!r} "
+          f"album={tags.get('album')!r}")
+    if ("audio", "flac") not in kinds:
+        failures.append(f"not flac: {kinds}")
+    if ("video", "mjpeg") not in kinds:
+        failures.append("flac cover art not embedded")
+    if "Never Gonna" not in str(tags.get("title", "")):
+        failures.append(f"flac title tag wrong: {tags.get('title')!r}")
+    if "Whenever You Need Somebody" not in str(tags.get("album", "")):
+        failures.append(f"flac album tag wrong: {tags.get('album')!r}")
+    os.remove(out2)
+
 print()
 if failures:
     print("FAILURES:")
