@@ -57,6 +57,10 @@ need more. No accounts, no ads, no telemetry, no license checks.
   no account or API key needed. Audio is fetched from a public source
   (YouTube search for "artist - title"), the same approach every web
   Spotify downloader uses, since Spotify's own streams are DRM-protected
+- **Album-version matching** — candidates are scored against Spotify's
+  exact duration, so you get the clean album/Topic upload instead of
+  music-video edits (intros, shortened cuts), live versions, remixes or
+  sped-up uploads
 - Per-track progress in the Activity table; a track with no match is
   skipped and reported while the rest of the collection continues
 - Missing fields are enriched from the iTunes Search API (public, no

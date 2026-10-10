@@ -448,6 +448,66 @@ class DownloadWorker(QThread):
         return {"output": first_out if coll["kind"] == "track" else target_dir,
                 "name": coll["name"], "size": total_size, "spotify": True}
 
+    def _pick_track_match(self, ydl, tr):
+        """Find the best audio match for a track, album-version first.
+
+        Scores search candidates against Spotify's duration: exact-length
+        matches (album/Topic uploads) win; music-video edits, live,
+        remix and sped-up versions are rejected or penalized.
+        Returns the winning entry's video id.
+        """
+        q = f"{tr.get('artists') or ''} - {tr.get('title') or ''}".strip(" -")
+        want_s = (tr.get("duration_ms") or 0) / 1000.0
+        entries = []
+        try:
+            res = ydl.extract_info(f"ytsearch5:{q}", download=False)
+            entries = [e for e in ((res or {}).get("entries") or []) if e]
+        except Exception:  # noqa: BLE001
+            entries = []
+        if not entries:
+            try:
+                res = ydl.extract_info(f"ytsearch1:{q}", download=False)
+                if res:
+                    entries = [res]
+            except Exception:  # noqa: BLE001
+                entries = []
+        if not entries:
+            return None
+
+        t = (tr.get("title") or "").lower()
+
+        def _score(e):
+            title = (e.get("title") or "").lower()
+            chan = (e.get("channel") or e.get("uploader") or "").lower()
+            score = 0
+            dur = e.get("duration") or 0
+            if want_s and dur:
+                ratio = abs(dur - want_s) / want_s
+                if ratio <= 0.08:
+                    score += 100          # album-length match
+                elif ratio > 0.30:
+                    score -= 100          # live / edit / sped-up length
+            if t and (t in title or title in t):
+                score += 20
+            if "topic" in chan:
+                score += 15
+            if "official audio" in title or title.endswith("audio"):
+                score += 10
+            if "live" in title:
+                score -= 30
+            if ("remix" in title or "version" in title or "edit" in title) and \
+                    "remix" not in t and "version" not in t and "edit" not in t:
+                score -= 20
+            if "sped up" in title or "speed up" in title or "nightcore" in title:
+                score -= 40
+            if "cover" in title:
+                score -= 25
+            return score
+
+        best = max(entries, key=_score)
+        vid = best.get("id")
+        return vid or None
+
     def _spotify_track(self, ydl, tr, i, n, target_dir, tmpdir, cover,
                        ffmpeg, coll):
         """Download one track's audio and encode it with full metadata."""
@@ -457,8 +517,11 @@ class DownloadWorker(QThread):
         artists = tr.get("artists") or ""
         ydl.params["outtmpl"] = {
             "default": os.path.join(tmpdir, f"{i:03d}.%(ext)s")}
+        vid = self._pick_track_match(ydl, tr)
+        if not vid:
+            raise yt_dlp.utils.DownloadError("no match found")
         info = ydl.extract_info(
-            f"ytsearch1:{artists} - {tr['title']}", download=True)
+            f"https://www.youtube.com/watch?v={vid}", download=True)
         if not info:
             raise yt_dlp.utils.DownloadError("no match found")
         tmp = ydl.prepare_filename(info)
