@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 import yt_dlp
 
 from .settings import Settings
+from . import spotify
 
 
 class DownloadCancelled(Exception):
@@ -80,6 +81,16 @@ class DownloadWorker(QThread):
             self.progress.emit({"status": "postprocessing", "percent": 100.0})
 
     def run(self):
+        if spotify.is_spotify_url(self.url):
+            try:
+                self.finished_ok.emit(self._download_spotify())
+            except DownloadCancelled:
+                self.failed.emit("cancelled")
+            except spotify.SpotifyError as e:
+                self.failed.emit(str(e))
+            except Exception as e:  # noqa: BLE001 - surface anything to the UI
+                self.failed.emit(f"{type(e).__name__}: {e}")
+            return
         outtmpl = os.path.join(
             self.settings.download_dir(), "%(title).180B [%(id)s].%(ext)s")
         opts = {
@@ -318,6 +329,175 @@ class DownloadWorker(QThread):
         raise yt_dlp.utils.DownloadError(
             f"ffmpeg exited with code {rc}: {tail or 'no output'}")
 
+    def _fetch_cover(self, url, tmpdir):
+        if not url:
+            return None
+        import urllib.request
+        dest = os.path.join(tmpdir, "cover.jpg")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as r, \
+                    open(dest, "wb") as f:
+                f.write(r.read())
+            return dest if os.path.getsize(dest) > 1000 else None
+        except Exception:  # noqa: BLE001 - cover is optional
+            return None
+
+    def _download_spotify(self):
+        """Resolve a Spotify link and fetch every track as a tagged MP3.
+
+        Audio comes from a public YouTube search for "artist - title" (the
+        same approach every web Spotify downloader uses, since Spotify
+        streams are DRM-protected); tags and cover art come from Spotify.
+        """
+        from .debuglog import log as dbg
+        coll = spotify.resolve(self.url)
+        tracks = coll["tracks"]
+        n = len(tracks)
+        dl = self.settings.download_dir()
+        if coll["kind"] == "album":
+            target_dir = os.path.join(
+                dl, f"{self._safe_name(coll.get('artist'))} - "
+                   f"{self._safe_name(coll['name'])}".strip(" -"))
+        elif coll["kind"] == "playlist":
+            target_dir = os.path.join(dl, self._safe_name(coll["name"]))
+        else:
+            target_dir = dl
+        os.makedirs(target_dir, exist_ok=True)
+        tmpdir = os.path.join(target_dir, ".vloader-tmp")
+        os.makedirs(tmpdir, exist_ok=True)
+        cover = self._fetch_cover(coll.get("cover"), tmpdir)
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            raise yt_dlp.utils.DownloadError("ffmpeg executable not found")
+
+        cell = {"i": 0, "label": coll["name"]}
+
+        def _hook(d):
+            if self._cancelled:
+                raise DownloadCancelled()
+            if d.get("status") == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+                done = d.get("downloaded_bytes", 0)
+                frac = done / total if total else 0
+                self.progress.emit({
+                    "status": "downloading",
+                    "percent": (cell["i"] + frac) / n * 100.0,
+                    "speed": (d.get("_speed_str") or "").strip(),
+                    "name": cell["label"]})
+
+        self.progress.emit({"status": "downloading", "percent": 0.0,
+                            "name": coll["name"]})
+        ok = 0
+        first_out = ""
+        total_size = 0
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "no_color": True,
+            "retries": 2,
+            "windows_filenames": True,
+            "progress_hooks": [_hook],
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            for i, tr in enumerate(tracks):
+                if self._cancelled:
+                    raise DownloadCancelled()
+                cell["i"] = i
+                cell["label"] = (f"{i + 1}/{n} · {tr['title']}" if n > 1
+                                 else tr["title"])
+                try:
+                    out = self._spotify_track(
+                        ydl, tr, i, n, target_dir, tmpdir, cover, ffmpeg,
+                        coll)
+                except DownloadCancelled:
+                    raise
+                except Exception as e:  # noqa: BLE001 - skip bad tracks
+                    import traceback
+                    dbg(f"spotify track failed: {tr['title']}: {e}\n"
+                        + traceback.format_exc())
+                    self.progress.emit({
+                        "status": "downloading", "percent": (i + 1) / n * 100.0,
+                        "name": f"skipped: {tr['title']}"})
+                    continue
+                ok += 1
+                total_size += os.path.getsize(out)
+                if not first_out:
+                    first_out = out
+        try:
+            for f in os.listdir(tmpdir):
+                os.remove(os.path.join(tmpdir, f))
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
+        if ok == 0:
+            raise yt_dlp.utils.DownloadError(
+                "could not download any track (no matches found)")
+        return {"output": first_out if coll["kind"] == "track" else target_dir,
+                "name": coll["name"], "size": total_size, "spotify": True}
+
+    def _spotify_track(self, ydl, tr, i, n, target_dir, tmpdir, cover,
+                       ffmpeg, coll):
+        """Download one track's audio and encode a tagged 320k MP3."""
+        artists = tr.get("artists") or ""
+        ydl.params["outtmpl"] = {
+            "default": os.path.join(tmpdir, f"{i:03d}.%(ext)s")}
+        info = ydl.extract_info(
+            f"ytsearch1:{artists} - {tr['title']}", download=True)
+        if not info:
+            raise yt_dlp.utils.DownloadError("no match found")
+        tmp = ydl.prepare_filename(info)
+        if not os.path.exists(tmp):
+            cands = sorted(
+                os.path.join(tmpdir, f) for f in os.listdir(tmpdir)
+                if f.startswith(f"{i:03d}."))
+            if not cands:
+                raise yt_dlp.utils.DownloadError("download vanished")
+            tmp = cands[0]
+
+        if coll["kind"] == "track":
+            fname = (f"{self._safe_name(artists)} - "
+                     f"{self._safe_name(tr['title'])}.mp3")
+        elif coll["kind"] == "album":
+            fname = f"{i + 1:02d} - {self._safe_name(tr['title'])}.mp3"
+        else:
+            fname = (f"{i + 1:02d} - {self._safe_name(artists)} - "
+                     f"{self._safe_name(tr['title'])}.mp3")
+        final = os.path.join(target_dir, fname)
+        base, ext = os.path.splitext(final)
+        k = 1
+        while os.path.exists(final):
+            final = f"{base} ({k}){ext}"
+            k += 1
+
+        cmd = [ffmpeg, "-y", "-nostdin", "-hide_banner", "-loglevel",
+               "error", "-i", tmp]
+        if cover and os.path.exists(cover):
+            cmd += ["-i", cover, "-map", "0:a:0", "-map", "1:v:0",
+                    "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
+        else:
+            cmd += ["-map", "0:a:0"]
+        cmd += ["-c:a", "libmp3lame", "-b:a", "320k",
+                "-id3v2_version", "3",
+                "-metadata", f"title={tr['title']}",
+                "-metadata", f"artist={artists}"]
+        if tr.get("album"):
+            cmd += ["-metadata", f"album={tr['album']}"]
+        if n > 1:
+            cmd += ["-metadata", f"track={i + 1}"]
+        cmd += [final]
+        r = subprocess.run(cmd, capture_output=True, timeout=600,
+                           stdin=subprocess.DEVNULL)
+        if r.returncode != 0 or not os.path.exists(final):
+            raise RuntimeError(
+                f"mp3 encode failed: {(r.stderr or b'')[-200:]!r}")
+        os.remove(tmp)
+        self.progress.emit({"status": "downloading",
+                            "percent": (i + 1) / n * 100.0,
+                            "name": (f"{i + 1}/{n} · {tr['title']}" if n > 1
+                                     else tr["title"])})
+        return final
+
     def _repair_live(self, partial):
         """A live capture stopped mid-stream lacks the mp4 moov box;
         re-mux with ffmpeg so the file is playable. Returns final path."""
@@ -427,7 +607,10 @@ class DownloadManager(QObject):
         url = (url or "").strip()
         if not url:
             return None
-        if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+        m = re.match(r"^spotify:(track|album|playlist):([A-Za-z0-9]+)$", url)
+        if m:
+            url = f"https://open.spotify.com/{m.group(1)}/{m.group(2)}"
+        elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
             url = "https://" + url
         task_id = self._next_id
         self._next_id += 1

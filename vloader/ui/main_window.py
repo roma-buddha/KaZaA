@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         out = res.get("output", "")
         fmt = getattr(self, "_auto_conv_fmt", "")
         dbg(f"on_dl_finished tid={tid} out={out} auto_conv={fmt}")
-        if fmt and out:
+        if fmt and out and not res.get("spotify"):
             self._queue_convert(out, fmt, getattr(self, "_auto_conv_q", "normal"),
                                 delete_original=self.settings.get(
                                     "delete_original_after_conversion"),

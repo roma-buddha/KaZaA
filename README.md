@@ -39,6 +39,20 @@ need more. No accounts, no ads, no telemetry, no license checks.
 - Quality selection applies (best variant not exceeding the chosen resolution);
   Pause is disabled for live tasks (a live stream cannot be resumed mid-air)
 
+### Spotify
+- **Paste any Spotify link** — a track, an album or a playlist (also accepts
+  `spotify:track:…` URIs and `spotify.link` short links)
+- **Tagged MP3, 320 kbps** — every track is saved with proper ID3v2 tags
+  (title, artist, album, track number) and the cover art embedded
+- **Album / playlist folders** — collections download into their own folder
+  (`Artist - Album/01 - Title.mp3`, playlists numbered with artist names)
+- Metadata (track list, covers) comes from Spotify's public embed pages —
+  no account or API key needed. Audio is fetched from a public source
+  (YouTube search for "artist - title"), the same approach every web
+  Spotify downloader uses, since Spotify's own streams are DRM-protected
+- Per-track progress in the Activity table; a track with no match is
+  skipped and reported while the rest of the collection continues
+
 ### Convert
 - **15 output formats** — MP4, MKV, AVI, MOV, WMV, FLV, WebM, XviD (video) and
   MP3, M4A, WMA, WAV, FLAC, OGG (audio)

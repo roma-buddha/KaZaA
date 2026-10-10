@@ -36,7 +36,8 @@ class DownloadPane(QWidget):
         lay.addWidget(self.multi)
 
         self.url_edit = QLineEdit()
-        self.url_edit.setPlaceholderText("https://...")
+        self.url_edit.setPlaceholderText(
+            "https://...  —  or a Spotify track / album / playlist link")
         self.url_edit.returnPressed.connect(self._submit)
         lay.addWidget(self.url_edit)
 
