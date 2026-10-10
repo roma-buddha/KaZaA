@@ -175,7 +175,9 @@ class MainWindow(QMainWindow):
             tid = self.downloads.submit(url, subtitles=subtitles,
                                         transcript_only=transcript_only)
             if tid:
-                self.activity.add_task(tid, url, "download")
+                self.activity.add_task(tid, url, "download",
+                                       subtitles=subtitles,
+                                       transcript_only=transcript_only)
                 self.history.add("download", name=url.split("/")[-1][:80], url=url, status="started")
         self._refresh_status()
 
@@ -183,6 +185,11 @@ class MainWindow(QMainWindow):
         self.activity.update_task(tid, info)
 
     def _on_dl_finished(self, tid, res):
+        if res.get("stopped"):
+            self.activity.set_done(tid, res.get("output", ""), stopped=True)
+            self.history.update_last(status="stopped (saved)")
+            self._maybe_after_done()
+            return
         self.activity.set_done(tid, res.get("output", ""))
         self.history.update_last(status="done", output=res.get("output", ""),
                                  size=res.get("size", 0))
@@ -284,6 +291,11 @@ class MainWindow(QMainWindow):
         from ..debuglog import log as dbg
         dbg(f"_conv_done tid={tid} out={res.get('output')}")
         self.convert_workers.pop(tid, None)
+        if res.get("stopped"):
+            self.activity.set_done(tid, res.get("output", ""), stopped=True)
+            self.history.update_last(status="stopped (saved)")
+            self._maybe_after_done()
+            return
         self.activity.set_done(tid, res.get("output", ""))
         self.history.update_last(status="done", output=res.get("output", ""))
         self._pump_converts()
@@ -318,8 +330,33 @@ class MainWindow(QMainWindow):
         self._refresh_status()
 
     def pause_task(self, task_id):
+        """Pause (non-live): keep partial file for resume."""
         self.downloads.cancel(task_id)
         self.activity.set_error(task_id, "cancelled")
+
+    def stop_task(self, task_id):
+        """Stop; for live streams the partial file is repaired and saved."""
+        self.downloads.cancel(task_id)
+
+    def resume_task(self, task_id):
+        row = next((r for r, t in self.activity.rows.items()
+                    if t["id"] == task_id), None)
+        if row is None:
+            return
+        t = self.activity.rows[row]
+        self.downloads.resume(task_id, t["url"], subtitles=t.get("subtitles"),
+                              transcript_only=t.get("transcript_only", False))
+        self.activity.update_task(task_id, {"status": "queued", "live": False})
+        bar = self.activity.cellWidget(row, 2)
+        if bar:
+            bar.setRange(0, 100)
+            bar.setValue(0)
+
+    def open_task(self, task_id):
+        row = next((r for r, t in self.activity.rows.items()
+                    if t["id"] == task_id), None)
+        if row is not None and self.activity.rows[row].get("output"):
+            self.locate_file(self.activity.rows[row]["output"])
 
     def _uncheck_all(self):
         for r in range(self.activity.rowCount()):

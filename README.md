@@ -26,6 +26,19 @@ need more. No accounts, no ads, no telemetry, no license checks.
   start / pause / stop, reorder, checkboxes
 - **History** — persistent log of every download and conversion
 
+### Live streams
+- **Record live streams** — paste a live page URL (e.g. a webcam room) and
+  VLoader records it while it plays, with both video and audio
+- **● LIVE status** — live tasks show a red badge, an indeterminate progress
+  bar and the recording elapsed time instead of a percentage
+- **Graceful stop** — the ⏹ button sends ffmpeg a quit command so the MP4 is
+  finalized immediately and stays playable; if the app is killed instead, the
+  partial capture is auto-repaired on next run
+- **Original naming** — recordings are saved like `model 2026-10-10 22:32.mp4`,
+  named after the title/timestamp the site reports
+- Quality selection applies (best variant not exceeding the chosen resolution);
+  Pause is disabled for live tasks (a live stream cannot be resumed mid-air)
+
 ### Convert
 - **15 output formats** — MP4, MKV, AVI, MOV, WMV, FLV, WebM, XviD (video) and
   MP3, M4A, WMA, WAV, FLAC, OGG (audio)
@@ -40,7 +53,7 @@ need more. No accounts, no ads, no telemetry, no license checks.
   auto-generated captions, multiple languages at once
 - **Export as Markdown (.md)** — heading, language + source metadata, and
   per-line `[mm:ss]` timestamps; also exportable as **SRT** or **WebVTT**
-- **Convert existing transcripts** — load any `.`--subtitles md|srt|vtt`` / `.vtt` file into the
+- **Convert existing transcripts** — load any `.vtt` / `.srt` file into the
   Convert pane and turn it into Markdown (timestamps optional)
 
 ### Record
@@ -178,6 +191,8 @@ clips — verifying the whole pipeline end to end.
 - System-audio recording requires a dshow loopback device such as
   *virtual-audio-capturer*.
 - DRM-protected streams are not supported by design.
+- Live recording needs the broadcaster to be online at grab time; a finished
+  live task cannot be re-downloaded retroactively.
 
 ## License
 

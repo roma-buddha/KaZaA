@@ -26,6 +26,9 @@ samples = [
         "name": "Vimeo - Behind the scenes"}),
     (3, "local: talk.mp4 -> mp3", {"status": "converting", "percent": 31.0,
         "name": "Conference talk.mp3"}),
+    (4, "https://chaturbate.com/seltin_sweety/", {"status": "downloading",
+        "live": True, "elapsed": "12:34", "size": 218_000_000,
+        "name": "seltin_sweety 2026-10-10 22_32.mp4"}),
 ]
 for tid, url, info in samples:
     a.add_task(tid, url)

@@ -1,6 +1,9 @@
 """Download engine: yt-dlp driven QThread workers with queue + concurrency control."""
 import os
 import re
+import subprocess
+import threading
+import time
 
 from PySide6.QtCore import QObject, QThread, Signal
 
@@ -44,6 +47,8 @@ class DownloadWorker(QThread):
         self.transcript_only = transcript_only
         self._ydl = None
         self._cancelled = False
+        self._live = False
+        self._partial = ""
 
     def cancel(self):
         self._cancelled = True
@@ -52,16 +57,25 @@ class DownloadWorker(QThread):
         if self._cancelled:
             raise DownloadCancelled()
         if d.get("status") == "downloading":
+            if d.get("filename"):
+                self._partial = d["filename"]
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             done = d.get("downloaded_bytes", 0)
-            percent = (done / total * 100.0) if total else 0.0
+            percent = (done / total * 100.0) if total else None
             speed = d.get("_speed_str", "").strip()
             eta = d.get("_eta_str", "").strip()
+            elapsed = d.get("_elapsed_str", "").strip()
             name = os.path.basename(d.get("filename", ""))
-            self.progress.emit({
-                "status": "downloading", "percent": percent, "speed": speed,
-                "eta": eta, "size": total, "name": name,
-            })
+            info = {
+                "status": "downloading", "speed": speed, "eta": eta,
+                "size": total, "name": name,
+            }
+            if self._live:
+                info["live"] = True
+                info["elapsed"] = elapsed
+            elif percent is not None:
+                info["percent"] = percent
+            self.progress.emit(info)
         elif d.get("status") == "finished":
             self.progress.emit({"status": "postprocessing", "percent": 100.0})
 
@@ -95,7 +109,23 @@ class DownloadWorker(QThread):
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 self._ydl = ydl
-                info = ydl.extract_info(self.url, download=True)
+                # metadata first so live streams get a merge-free format
+                pre = ydl.extract_info(self.url, download=False)
+                if pre is None:
+                    raise DownloadCancelled()
+                self._live = bool(
+                    pre.get("is_live")
+                    or pre.get("live_status") == "is_live"
+                    or any((e or {}).get("is_live")
+                           for e in (pre.get("entries") or [])))
+                if self._live:
+                    # Live HLS is handled by a directly managed ffmpeg process:
+                    # yt-dlp's FFmpegFD never emits progress hooks and hides the
+                    # child process, so pause/stop/control must live here.
+                    self.finished_ok.emit(self._download_live(pre))
+                    return
+                else:
+                    info = ydl.process_ie_result(pre, download=True)
                 if info is None:
                     raise DownloadCancelled()
                 entries = info.get("entries") or [info]
@@ -122,6 +152,13 @@ class DownloadWorker(QThread):
                                        "transcripts": transcripts_done,
                                        "transcript_only": self.transcript_only})
         except DownloadCancelled:
+            if self._live and self._partial and os.path.exists(self._partial):
+                repaired = self._repair_live(self._partial)
+                if repaired:
+                    self.finished_ok.emit({"output": repaired, "name": "",
+                                           "size": os.path.getsize(repaired),
+                                           "stopped": True, "live": True})
+                    return
             self.failed.emit("cancelled")
         except yt_dlp.utils.DownloadError as e:
             msg = str(e)
@@ -133,6 +170,180 @@ class DownloadWorker(QThread):
         except Exception as e:  # noqa: BLE001 - surface anything to the UI
             self.failed.emit(f"{type(e).__name__}: {e}")
 
+
+    @staticmethod
+    def _fmt_elapsed(seconds):
+        seconds = int(seconds or 0)
+        h, rem = divmod(seconds, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+    @staticmethod
+    def _safe_name(name):
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name or ""))
+        return name.strip(" .") or "live"
+
+    def _download_live(self, pre):
+        """Record a live HLS stream with a directly managed ffmpeg process.
+
+        FFmpeg is spawned with stdin=PIPE so Stop can send a graceful 'q'
+        (ffmpeg finalizes the mp4 moov box -> immediately playable file),
+        and stderr=PIPE so we can parse `time=` for progress.  Returns the
+        finished_ok result dict; raises DownloadError on failure.
+        """
+        info = pre
+        if pre.get("entries"):
+            info = next((e for e in pre["entries"] if e), pre)
+        formats = info.get("formats") or info.get("requested_formats") or []
+        vids = sorted(
+            (f for f in formats if f.get("vcodec") not in (None, "none")),
+            key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+        if not vids:
+            raise yt_dlp.utils.DownloadError(
+                "no downloadable video stream found for this live page")
+        q = str(self.quality)
+        if q == "worst":
+            video = vids[0]
+        elif q.isdigit():
+            capped = [f for f in vids if (f.get("height") or 0) <= int(q)]
+            video = (capped or vids)[-1]
+        else:
+            video = vids[-1]
+        audio = None
+        if (video.get("acodec") or "none") == "none":
+            auds = sorted(
+                (f for f in formats
+                 if f.get("vcodec") in (None, "none") and f is not video),
+                key=lambda f: f.get("tbr") or 0)
+            audio = auds[-1] if auds else None
+
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            raise yt_dlp.utils.DownloadError("ffmpeg executable not found")
+        out_base = os.path.join(
+            self.settings.download_dir(),
+            self._safe_name(info.get("title")) + ".mp4")
+        out, n = out_base, 1
+        while os.path.exists(out) or os.path.exists(out + ".part"):
+            out = f"{out_base[:-4]} ({n}).mp4"
+            n += 1
+        partial = out + ".part"
+        self._partial = partial
+
+        cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "info"]
+        inputs = [video] + ([audio] if audio else [])
+        for fmt in inputs:
+            headers = fmt.get("http_headers") or info.get("http_headers") or {}
+            if headers:
+                cmd += ["-headers",
+                        "".join(f"{k}: {v}\r\n" for k, v in headers.items())]
+            cmd += ["-i", fmt["url"]]
+        cmd += ["-map", "0:v:0?"]
+        cmd += ["-map", "1:a:0?" if audio else "0:a:0?"]
+        cmd += ["-c", "copy", "-f", "mp4", partial]
+
+        state = {"elapsed": None, "tail": []}
+        time_re = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+        def _reader():
+            try:
+                for line in proc.stderr:
+                    m = time_re.search(line)
+                    if m:
+                        state["elapsed"] = (int(m.group(1)) * 3600
+                                            + int(m.group(2)) * 60
+                                            + float(m.group(3)))
+                    tail = state["tail"]
+                    tail.append(line.strip())
+                    del tail[:-20]
+            except (OSError, ValueError):
+                pass
+
+        self.progress.emit({
+            "status": "downloading", "live": True,
+            "elapsed": "0:00", "size": 0,
+            "name": os.path.basename(out)})
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE, text=True, encoding="utf-8",
+            errors="replace")
+        self._proc = proc
+        threading.Thread(target=_reader, daemon=True).start()
+
+        q_sent = False
+        start = time.monotonic()
+        last_emit = 0.0
+        while True:
+            try:
+                rc = proc.wait(timeout=0.5)
+                break
+            except subprocess.TimeoutExpired:
+                pass
+            if self._cancelled and not q_sent and proc.stdin:
+                q_sent = True
+                try:
+                    proc.stdin.write("q\n")
+                    proc.stdin.flush()
+                except (OSError, ValueError):
+                    pass
+            now = time.monotonic()
+            if now - last_emit >= 1.0:
+                last_emit = now
+                el = state["elapsed"]
+                if el is None:
+                    el = now - start
+                try:
+                    size = os.path.getsize(partial)
+                except OSError:
+                    size = 0
+                self.progress.emit({
+                    "status": "downloading", "live": True,
+                    "elapsed": self._fmt_elapsed(el), "size": size,
+                    "name": os.path.basename(out)})
+
+        stopped = bool(self._cancelled or q_sent)
+        if rc == 0 and os.path.exists(partial) and os.path.getsize(partial) > 0:
+            os.replace(partial, out)
+            return {"output": out, "name": os.path.basename(out),
+                    "size": os.path.getsize(out), "live": True,
+                    "stopped": stopped}
+        if stopped and os.path.exists(partial):
+            repaired = self._repair_live(partial)
+            if repaired:
+                return {"output": repaired,
+                        "name": os.path.basename(repaired),
+                        "size": os.path.getsize(repaired), "live": True,
+                        "stopped": True}
+        tail = " | ".join(state["tail"][-5:])
+        raise yt_dlp.utils.DownloadError(
+            f"ffmpeg exited with code {rc}: {tail or 'no output'}")
+
+    def _repair_live(self, partial):
+        """A live capture stopped mid-stream lacks the mp4 moov box;
+        re-mux with ffmpeg so the file is playable. Returns final path."""
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            return None
+        if partial.endswith(".part"):
+            final = partial[:-5]
+        else:
+            final = partial + ".fixed.mp4"
+        try:
+            rc = subprocess.run(
+                [ffmpeg, "-y", "-nostdin", "-hide_banner",
+                 "-err_detect", "ignore_err", "-i", partial,
+                 "-c", "copy", "-movflags", "+faststart", final],
+                capture_output=True, timeout=300,
+                stdin=subprocess.DEVNULL).returncode
+            if rc == 0 and os.path.exists(final) and os.path.getsize(final) > 0:
+                try:
+                    os.remove(partial)
+                except OSError:
+                    pass
+                return final
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return None
 
     def _convert_subtitles(self, out):
         """Convert downloaded vtt/srt sidecars to the requested format.
@@ -260,9 +471,9 @@ class DownloadManager(QObject):
         else:
             self._pending = [p for p in self._pending if p[0] != task_id]
             self.queue_changed.emit()
-            self.queue_changed.emit()
 
-    def resume(self, task_id, url, quality=None):
+    def resume(self, task_id, url, quality=None, subtitles=None,
+               transcript_only=False):
         self._pending.append((task_id, url, quality, subtitles, transcript_only))
         self.queue_changed.emit()
         self._pump()
