@@ -11,9 +11,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
-from vloader import tagger  # noqa: E402
-from vloader.converter import ConvertWorker  # noqa: E402
-from vloader.downloader import find_ffmpeg  # noqa: E402
+from kazaa import tagger  # noqa: E402
+from kazaa.converter import ConvertWorker  # noqa: E402
+from kazaa.downloader import find_ffmpeg  # noqa: E402
 
 TESTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 os.makedirs(TESTDIR, exist_ok=True)

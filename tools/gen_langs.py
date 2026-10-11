@@ -4,7 +4,7 @@ import json
 import os
 
 CORE = {
- "app_title": {"de":"VLoader - Video Downloader Konverter","es":"VLoader - Descargador y Conversor de Vídeo","ru":"VLoader - загрузчик и конвертер видео","zh_CN":"VLoader - 视频下载转换器","zh_TW":"VLoader - 影片下載轉換器","ar":"VLoader -  محمّل ومحرر الفيديو","bg":"VLoader - видео изтегляч и конвертор","cz":"VLoader - stahovač a konvertor videí","fi":"VLoader - videon lataaja ja muunnin","it":"VLoader - downloader e convertitore video","ku":"VLoader - dakêşker û veguhezerê vîdyoyê","nl":"VLoader - videodownloader en -converter","pl":"VLoader - pobieranie i konwersja wideo","pt":"VLoader - baixador e conversor de vídeo","tr":"VLoader - video indirici ve dönüştürücü"},
+ "app_title": {"de":"KazaA v2. revival - Video Downloader Konverter","es":"KazaA v2. revival - Descargador y Conversor de Vídeo","ru":"KazaA v2. revival - загрузчик и конвертер видео","zh_CN":"KazaA v2. revival - 视频下载转换器","zh_TW":"KazaA v2. revival - 影片下載轉換器","ar":"KazaA v2. revival -  محمّل ومحرر الفيديو","bg":"KazaA v2. revival - видео изтегляч и конвертор","cz":"KazaA v2. revival - stahovač a konvertor videí","fi":"KazaA v2. revival - videon lataaja ja muunnin","it":"KazaA v2. revival - downloader e convertitore video","ku":"KazaA v2. revival - dakêşker û veguhezerê vîdyoyê","nl":"KazaA v2. revival - videodownloader en -converter","pl":"KazaA v2. revival - pobieranie i konwersja wideo","pt":"KazaA v2. revival - baixador e conversor de vídeo","tr":"KazaA v2. revival - video indirici ve dönüştürücü"},
  "tab_download": {"de":"Herunterladen","es":"Descargar","ru":"Загрузка","zh_CN":"下载","zh_TW":"下載","ar":"تنزيل","bg":"Изтегляне","cz":"Stahování","fi":"Lataa","it":"Scarica","ku":"Daxistin","nl":"Downloaden","pl":"Pobieranie","pt":"Baixar","tr":"İndir"},
  "tab_activity": {"de":"Aktivität","es":"Actividad","ru":"Задачи","zh_CN":"活动","zh_TW":"活動","ar":"النشاط","bg":"Активност","cz":"Aktivita","fi":"Toiminnot","it":"Attività","ku":"Çalakî","nl":"Activiteit","pl":"Aktywność","pt":"Atividade","tr":"Etkinlik"},
  "tab_convert": {"de":"Konvertieren","es":"Convertir","ru":"Конвертация","zh_CN":"转换","zh_TW":"轉換","ar":"تحويل","bg":"Конвертиране","cz":"Konverze","fi":"Muunna","it":"Converti","ku":"Veguheztin","nl":"Converteren","pl":"Konwersja","pt":"Converter","tr":"Dönüştür"},
@@ -33,7 +33,7 @@ CORE = {
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    target = os.path.join(here, "..", "vloader", "i18n")
+    target = os.path.join(here, "..", "kazaa", "i18n")
     en = json.load(open(os.path.join(target, "en.json"), encoding="utf-8"))
     for code in ["de", "es", "ru", "zh_CN", "zh_TW", "ar", "bg", "cz", "fi",
                  "it", "ku", "nl", "pl", "pt", "tr"]:

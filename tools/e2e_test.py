@@ -10,9 +10,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
-from vloader.settings import Settings  # noqa: E402
-from vloader.downloader import DownloadWorker  # noqa: E402
-from vloader.converter import ConvertWorker, probe_duration  # noqa: E402
+from kazaa.settings import Settings  # noqa: E402
+from kazaa.downloader import DownloadWorker  # noqa: E402
+from kazaa.converter import ConvertWorker, probe_duration  # noqa: E402
 
 TESTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 os.makedirs(TESTDIR, exist_ok=True)

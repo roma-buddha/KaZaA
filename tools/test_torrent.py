@@ -18,9 +18,9 @@ app = QCoreApplication(sys.argv)
 
 import libtorrent as lt  # noqa: E402
 
-from vloader.settings import Settings  # noqa: E402
-from vloader import torrent as tor  # noqa: E402
-from vloader.torrent import TorrentWorker, is_torrent_source  # noqa: E402
+from kazaa.settings import Settings  # noqa: E402
+from kazaa import torrent as tor  # noqa: E402
+from kazaa.torrent import TorrentWorker, is_torrent_source  # noqa: E402
 
 failures = []
 
@@ -41,7 +41,7 @@ def free_port():
     return p
 
 
-tmp = tempfile.mkdtemp(prefix="vloader_torrent_")
+tmp = tempfile.mkdtemp(prefix="kazaa_torrent_")
 srcdir = os.path.join(tmp, "src")
 dldir = os.path.join(tmp, "dl")
 os.makedirs(srcdir)

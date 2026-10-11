@@ -11,8 +11,8 @@ app = QApplication(sys.argv)
 
 import yt_dlp  # noqa: E402
 
-from vloader.settings import Settings  # noqa: E402
-from vloader.downloader import DownloadWorker  # noqa: E402
+from kazaa.settings import Settings  # noqa: E402
+from kazaa.downloader import DownloadWorker  # noqa: E402
 
 failures = []
 

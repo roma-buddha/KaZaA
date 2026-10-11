@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vloader import transcripts  # noqa: E402
+from kazaa import transcripts  # noqa: E402
 
 SAMPLE_VTT = """WEBVTT
 

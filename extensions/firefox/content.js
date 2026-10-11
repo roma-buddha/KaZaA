@@ -1,13 +1,13 @@
-/* VLoader Helper - content script (Chrome MV3 / Firefox MV2 compatible).
-   Shows a "Download" button on video hover; sends the page URL to VLoader. */
+/* KazaA v2. revival Helper - content script (Chrome MV3 / Firefox MV2 compatible).
+   Shows a "Download" button on video hover; sends the page URL to KazaA v2. revival. */
 (function () {
   "use strict";
   const BRIDGE = "http://127.0.0.1:8765/add?url=";
 
-  function sendToVLoader() {
+  function sendToKazaA() {
     fetch(BRIDGE + encodeURIComponent(location.href), { mode: "cors" })
-      .then(() => flash("Sent to VLoader"))
-      .catch(() => flash("VLoader is not running"));
+      .then(() => flash("Sent to KazaA v2. revival"))
+      .catch(() => flash("KazaA v2. revival is not running"));
   }
 
   function flash(msg) {
@@ -31,7 +31,7 @@
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      sendToVLoader();
+      sendToKazaA();
     });
     document.documentElement.appendChild(btn);
     return btn;

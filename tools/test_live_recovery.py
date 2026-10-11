@@ -33,12 +33,12 @@ def probe_duration(path):
     return kinds, dur
 
 
-tmpdir = tempfile.mkdtemp(prefix="vloader_recover_")
+tmpdir = tempfile.mkdtemp(prefix="kazaa_recover_")
 os.environ["APPDATA"] = tmpdir          # isolate the live registry
 workdir = os.path.join(tmpdir, "dl")
 os.makedirs(workdir, exist_ok=True)
 
-from vloader.downloader import (  # noqa: E402
+from kazaa.downloader import (  # noqa: E402
     _register_live, _read_live_registry, recover_interrupted_live)
 
 final = os.path.join(workdir, "thecherie 2026-10-10 23_30.mp4")

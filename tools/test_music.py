@@ -24,21 +24,21 @@ def check(cond, msg):
 
 
 # --- unit: quality selector ----------------------------------------------
-from vloader.downloader import quality_to_formatsel  # noqa: E402
+from kazaa.downloader import quality_to_formatsel  # noqa: E402
 check(quality_to_formatsel("music").startswith("bestaudio"),
       "music quality selects audio-only")
 
 # --- UI smoke: MainWindow builds with the Music pane ----------------------
-from vloader.ui import theme  # noqa: E402
+from kazaa.ui import theme  # noqa: E402
 theme.apply(app)
-from vloader.ui.main_window import MainWindow  # noqa: E402
+from kazaa.ui.main_window import MainWindow  # noqa: E402
 win = MainWindow()
 check(win._pages.get("music") == 3, "music page registered")
 check(win.music_pane is not None, "music pane exists")
 check(win.music_pane.table.columnCount() == 4, "results table has 4 columns")
 
 # --- live search (network) -------------------------------------------------
-from vloader import music  # noqa: E402
+from kazaa import music  # noqa: E402
 print("[net] searching YouTube (may take a few seconds)...")
 try:
     results = music.search("mairo megurine luka", limit=8)
@@ -91,7 +91,7 @@ if results:
 
     # --- download -> mp3 pipeline (through the real manager) ---------------
     print("[net] downloading first result as music...")
-    tmpdl = tempfile.mkdtemp(prefix="vloader_music_")
+    tmpdl = tempfile.mkdtemp(prefix="kazaa_music_")
     win.settings.set("save_to", tmpdl)
     tid = win.downloads.submit(r0["url"], quality="music")
     check(tid is not None, "submitted to manager")

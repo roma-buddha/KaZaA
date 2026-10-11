@@ -8,9 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
-from vloader.ui import theme  # noqa: E402
+from kazaa.ui import theme  # noqa: E402
 theme.apply(app)
-from vloader.ui.main_window import MainWindow  # noqa: E402
+from kazaa.ui.main_window import MainWindow  # noqa: E402
 
 win = MainWindow()
 win.resize(1020, 660)
@@ -35,7 +35,7 @@ for tid, url, info in samples:
     if "name" in info:
         pass
     a.update_task(tid, info)
-a.set_done(9, "C:/Videos/VLoader/finished-demo.mp4")
+a.set_done(9, "C:/Videos/KazaA/finished-demo.mp4")
 a.add_task(9, "https://www.youtube.com/watch?v=demo4")
 a.set_done(9)
 a.add_task(10, "https://example.com/broken")
@@ -52,7 +52,7 @@ for name, idx in [("shot_download", 0), ("shot_activity", 1), ("shot_convert", 2
     print("saved", path)
 
 # recorder window too
-from vloader.ui.recorder_window import RecorderWindow  # noqa: E402
+from kazaa.ui.recorder_window import RecorderWindow  # noqa: E402
 rec = RecorderWindow(win.settings)
 rec.show()
 app.processEvents()

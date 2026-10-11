@@ -16,8 +16,8 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
-from vloader.settings import Settings  # noqa: E402
-from vloader.downloader import DownloadWorker, find_ffmpeg  # noqa: E402
+from kazaa.settings import Settings  # noqa: E402
+from kazaa.downloader import DownloadWorker, find_ffmpeg  # noqa: E402
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "https://chaturbate.com/seltin_sweety/"
 TESTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")

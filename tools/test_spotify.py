@@ -12,9 +12,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
-from vloader import spotify  # noqa: E402
-from vloader.settings import Settings  # noqa: E402
-from vloader.downloader import DownloadWorker  # noqa: E402
+from kazaa import spotify  # noqa: E402
+from kazaa.settings import Settings  # noqa: E402
+from kazaa.downloader import DownloadWorker  # noqa: E402
 
 TESTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 os.makedirs(TESTDIR, exist_ok=True)

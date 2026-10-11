@@ -1,9 +1,9 @@
-# VLoader
+# KazaA v2. revival
 
 **A modern, dark-themed video downloader, converter & screen recorder for Windows —
 built entirely on open-source components (yt-dlp + ffmpeg + PySide6).**
 
-VLoader is a clean-room desktop application in the "video downloader converter"
+KazaA v2. revival is a clean-room desktop application in the "video downloader converter"
 category: paste a link, get the video; convert, trim, merge or record when you
 need more. No accounts, no ads, no telemetry, no license checks.
 
@@ -52,7 +52,7 @@ need more. No accounts, no ads, no telemetry, no license checks.
 
 ### Live streams
 - **Record live streams** — paste a live page URL (e.g. a webcam room) and
-  VLoader records it while it plays, with both video and audio
+  KazaA v2. revival records it while it plays, with both video and audio
 - **● LIVE status** — live tasks show a red badge, an indeterminate progress
   bar and the recording elapsed time instead of a percentage
 - **Graceful stop** — the ⏹ button sends ffmpeg a quit command so the MP4 is
@@ -146,7 +146,7 @@ python tools/screenshot.py    # writes tools/shot_*.png
 
 ### ffmpeg
 
-VLoader needs an `ffmpeg.exe` / `ffprobe.exe` build. Either:
+KazaA v2. revival needs an `ffmpeg.exe` / `ffprobe.exe` build. Either:
 
 - drop a static build into `bin/` (e.g. the "essentials" build from
   https://www.gyan.dev/ffmpeg/builds/), or
@@ -157,11 +157,15 @@ VLoader needs an `ffmpeg.exe` / `ffprobe.exe` build. Either:
 ### Run
 
 ```
-vloader.bat                                # GUI
-python -m vloader --url "https://..."      # add a download on launch
-python -m vloader --url "..." --quality 720 --exit force
-python -m vloader --install-plugins        # browser extension instructions
+kazaa.bat                                # GUI
+python -m kazaa --url "https://..."      # add a download on launch
+python -m kazaa --url "..." --quality 720 --exit force
+python -m kazaa --install-plugins        # browser extension instructions
 ```
+
+The release is **2.0.0**. Existing settings, history, and live-recording recovery
+data are copied to `%APPDATA%\KazaA` on first launch; the original data is kept.
+New downloads and screen recordings default to `%USERPROFILE%\Videos\KazaA`.
 
 ### Browser extensions
 
@@ -189,9 +193,9 @@ python -m vloader --install-plugins        # browser extension instructions
 ## Architecture
 
 ```
-vloader/
+kazaa/
   __main__.py        CLI entry (GUI or headless download)
-  settings.py        JSON-backed persistent settings (%APPDATA%\VLoader)
+  settings.py        JSON-backed persistent settings (%APPDATA%\KazaA)
   history.py         download/convert history (JSON)
   downloader.py      yt-dlp engine, QThread workers, concurrency-limited queue
   converter.py       ffmpeg subprocess wrapper: convert/trim/volume/merge

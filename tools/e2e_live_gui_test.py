@@ -17,9 +17,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
-from vloader.ui import theme  # noqa: E402
+from kazaa.ui import theme  # noqa: E402
 theme.apply(app)
-from vloader.ui.main_window import MainWindow  # noqa: E402
+from kazaa.ui.main_window import MainWindow  # noqa: E402
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "https://chaturbate.com/thecherie/"
 TESTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
