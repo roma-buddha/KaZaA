@@ -134,6 +134,9 @@ def main(argv=None):
     from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
     from .ui.shell import ShellWindow
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("KazaA.Start1")
     app = QApplication(sys.argv[:1])
     app.setApplicationName("KazaA")
     app.setOrganizationName("KazaA")

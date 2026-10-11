@@ -4,9 +4,10 @@
 
 This branch starts the rebuild with a native local app shell. It matches Ohana AI's
 cream and terracotta light theme, warm charcoal dark theme, typography, and sidebar.
-Navigation, sidebar collapse/resizing, keyboard shortcuts, and saved appearance
-preferences work. Media pages are intentionally empty; their tools come next.
-The square KazaA logo has no subtitle.
+The sidebar and workspace are empty so each function can be added from scratch.
+Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
+work. The icon-only gear in the top-right opens a small appearance dialog.
+The rounded K-and-orbit icon has no subtitle or wordmark.
 
 ```powershell
 python -m venv .venv
@@ -23,6 +24,10 @@ original dependencies. Its existing capabilities are documented below.
 
 Focused shell checks: `.\.venv\Scripts\python.exe tools/test_shell.py`.
 Theme previews: `.\.venv\Scripts\python.exe tools/preview_shell.py`.
+
+Create or repair the KazaA desktop shortcut:
+`powershell -ExecutionPolicy Bypass -File tools/install_shortcut.ps1`.
+An old VLoader desktop shortcut is backed up under `tools/out/shortcuts/`.
 
 **A modern, dark-themed video downloader, converter & screen recorder for Windows —
 built entirely on open-source components (yt-dlp + ffmpeg + PySide6).**

@@ -21,15 +21,13 @@ if os.name == "nt":
 with tempfile.TemporaryDirectory() as profile:
     window = ShellWindow(Path(profile, "shell.json"))
     window.show()
-    for name, theme, page, size, collapsed in [
-        ("shell-light", "light", "overview", (1200, 800), False),
-        ("shell-dark", "dark", "overview", (1200, 800), False),
-        ("shell-settings", "light", "settings", (1200, 800), False),
-        ("shell-compact", "dark", "downloads", (860, 640), False),
-        ("shell-collapsed", "light", "overview", (1200, 800), True),
+    for name, theme, size, collapsed in [
+        ("shell-light", "light", (1200, 800), False),
+        ("shell-dark", "dark", (1200, 800), False),
+        ("shell-compact", "dark", (860, 640), False),
+        ("shell-collapsed", "light", (1200, 800), True),
     ]:
         window.set_theme(theme)
-        window.navigate(page)
         window.resize(*size)
         window._set_collapsed(collapsed)
         app.processEvents()
@@ -37,4 +35,13 @@ with tempfile.TemporaryDirectory() as profile:
         if not window.grab().save(str(path)):
             raise RuntimeError(f"Could not save {path}")
         print(path)
+    for theme in ("light", "dark"):
+        window.set_theme(theme)
+        window.show_settings()
+        app.processEvents()
+        path = output / f"appearance-{theme}.png"
+        if not window.appearance.grab().save(str(path)):
+            raise RuntimeError(f"Could not save {path}")
+        print(path)
+        window.appearance.close()
     window.close()
