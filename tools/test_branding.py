@@ -32,14 +32,14 @@ class BrandingTests(unittest.TestCase):
                 self.assertEqual(settings.get("language"), "es")
                 self.assertEqual(settings.get("save_to"), "existing-output")
                 migrated = Path(config_dir())
-                self.assertEqual(migrated.name, "KazaA")
+                self.assertEqual(migrated.name, "KaZaA")
                 for name in data:
                     self.assertEqual((legacy / name).read_bytes(),
                                      (migrated / name).read_bytes())
 
     def test_existing_new_settings_are_not_overwritten(self):
         with tempfile.TemporaryDirectory() as base:
-            for name, language in [("VLoader", "es"), ("KazaA", "de")]:
+            for name, language in [("VLoader", "es"), ("KaZaA", "de")]:
                 directory = Path(base, name)
                 directory.mkdir()
                 (directory / "settings.json").write_text(
@@ -47,19 +47,32 @@ class BrandingTests(unittest.TestCase):
             with patch.dict(os.environ, {"APPDATA": base}):
                 self.assertEqual(Settings().get("language"), "de")
 
+    def test_earlier_capitalization_preserves_existing_preferences(self):
+        with tempfile.TemporaryDirectory() as base:
+            previous = Path(base, "KazaA")
+            previous.mkdir()
+            (previous / "settings.json").write_text('{"language": "es"}', encoding="utf-8")
+            (previous / "shell-settings.json").write_text('{"theme": "dark"}', encoding="utf-8")
+            with patch.dict(os.environ, {"APPDATA": base}):
+                current = Path(config_dir())
+                self.assertEqual(current.name, "KaZaA")
+                self.assertEqual(Settings().get("language"), "es")
+                self.assertEqual((current / "shell-settings.json").read_text(), '{"theme": "dark"}')
+                self.assertTrue(previous.exists())
+
     def test_fresh_download_folder_uses_new_name(self):
         with tempfile.TemporaryDirectory() as base:
             with patch.dict(os.environ, {"APPDATA": str(Path(base, "config"))}), \
                     patch("kazaa.settings.os.path.expanduser", return_value=base):
                 self.assertEqual(Settings().download_dir(),
-                                 str(Path(base, "Videos", "KazaA")))
+                                 str(Path(base, "Videos", "KaZaA")))
 
     def test_every_language_has_new_title_and_about_name(self):
         try:
             for language in i18n.languages():
                 i18n.set_language(language)
-                self.assertTrue(i18n.tr("app_title").startswith("KazaA v2. revival"))
-                self.assertIn("KazaA v2. revival", i18n.tr("m_about"))
+                self.assertTrue(i18n.tr("app_title").startswith("KaZaA v2. revival"))
+                self.assertIn("KaZaA v2. revival", i18n.tr("m_about"))
         finally:
             i18n.set_language("en")
 
@@ -68,7 +81,7 @@ class BrandingTests(unittest.TestCase):
         with patch.object(__main__, "_redirect_stderr"), \
                 contextlib.redirect_stdout(output):
             self.assertEqual(__main__.main(["--version"]), 0)
-        self.assertEqual(output.getvalue().strip(), f"KazaA v2. revival {VERSION}")
+        self.assertEqual(output.getvalue().strip(), f"KaZaA v2. revival {VERSION}")
 
     def test_plugin_instructions_point_to_repository(self):
         output = io.StringIO()
@@ -77,14 +90,14 @@ class BrandingTests(unittest.TestCase):
             self.assertEqual(__main__._plugin_instructions(install=False), 0)
         text = output.getvalue()
         self.assertIn(str(Path(__file__).resolve().parent.parent) + "\\extensions", text)
-        self.assertIn("KazaA v2. revival Helper", text)
+        self.assertIn("KaZaA v2. revival Helper", text)
 
     def test_extensions_use_new_name_and_version(self):
         root = Path(__file__).resolve().parent.parent
         for browser in ("chrome", "firefox"):
             manifest = json.loads((root / "extensions" / browser / "manifest.json")
                                   .read_text(encoding="utf-8"))
-            self.assertEqual(manifest["name"], "KazaA v2. revival Helper")
+            self.assertEqual(manifest["name"], "KaZaA v2. revival Helper")
             self.assertEqual(manifest["version"], VERSION)
 
 

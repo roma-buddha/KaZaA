@@ -3,12 +3,13 @@ import json
 import os
 import shutil
 
-APP_NAME = "KazaA"
-ORG = "KazaA"
+APP_NAME = "KaZaA"
+ORG = "KaZaA"
 LEGACY_APP_NAME = "VLoader"  # Only used to preserve data from earlier releases.
+PREVIOUS_APP_NAME = "KazaA"  # Case-sensitive systems may have the earlier spelling.
 
 DEFAULTS = {
-    "save_to": "",                      # download output directory ("" = <Videos>/KazaA)
+    "save_to": "",                      # download output directory ("" = <Videos>/KaZaA)
     "download_quality": "best",         # best | 1080 | 720 | 480 | 360 | 240 | worst
     "spotify_format": "mp3",            # mp3 (320k) | flac (lossless) | wav
     "simultaneous_downloads": 3,
@@ -31,9 +32,12 @@ DEFAULTS = {
 def config_dir():
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     d = os.path.join(base, APP_NAME)
-    legacy = os.path.join(base, LEGACY_APP_NAME)
-    if not os.path.exists(d) and os.path.isdir(legacy):
-        shutil.copytree(legacy, d)
+    if not os.path.exists(d):
+        for name in (PREVIOUS_APP_NAME, LEGACY_APP_NAME):
+            legacy = os.path.join(base, name)
+            if os.path.isdir(legacy):
+                shutil.copytree(legacy, d)
+                break
     os.makedirs(d, exist_ok=True)
     return d
 

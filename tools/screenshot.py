@@ -35,7 +35,7 @@ for tid, url, info in samples:
     if "name" in info:
         pass
     a.update_task(tid, info)
-a.set_done(9, "C:/Videos/KazaA/finished-demo.mp4")
+a.set_done(9, "C:/Videos/KaZaA/finished-demo.mp4")
 a.add_task(9, "https://www.youtube.com/watch?v=demo4")
 a.set_done(9)
 a.add_task(10, "https://example.com/broken")

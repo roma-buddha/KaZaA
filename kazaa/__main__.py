@@ -19,7 +19,7 @@ def _redirect_stderr():
 def legacy_main(argv=None):
     _redirect_stderr()
     p = argparse.ArgumentParser(prog="kazaa",
-                                description="KazaA v2. revival - video downloader/converter")
+                                description="KaZaA v2. revival - video downloader/converter")
     p.add_argument("--url", action="append", help="URL to download (repeatable)")
     p.add_argument("--quality", help="e.g. 720, 1080, best, worst")
     p.add_argument("--output-dir", help="override download directory")
@@ -46,7 +46,7 @@ def legacy_main(argv=None):
 
     if args.version:
         from . import VERSION
-        print(f"KazaA v2. revival {VERSION}")
+        print(f"KaZaA v2. revival {VERSION}")
         return 0
 
     if args.install_plugins or args.uninstall_plugins:
@@ -110,22 +110,22 @@ def _plugin_instructions(install=True):
     print(f"  Chrome : open chrome://extensions, enable Developer mode, "
           f"then 'Load unpacked' -> {root}\\extensions\\chrome"
           if install else
-          f"  Chrome : open chrome://extensions and remove 'KazaA v2. revival Helper'")
+          f"  Chrome : open chrome://extensions and remove 'KaZaA v2. revival Helper'")
     print(f"  Firefox: open about:debugging#/runtime/this-firefox, "
           f"'Load Temporary Add-on' -> {root}\\extensions\\firefox\\manifest.json"
           if install else
-          f"  Firefox: open about:addons and remove 'KazaA v2. revival Helper'")
+          f"  Firefox: open about:addons and remove 'KaZaA v2. revival Helper'")
     return 0
 
 
 def main(argv=None):
     from . import VERSION
-    parser = argparse.ArgumentParser(prog="kazaa", description="KazaA v2. revival — local desktop workspace")
+    parser = argparse.ArgumentParser(prog="kazaa", description="KaZaA v2. revival — local desktop workspace")
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--legacy", action="store_true", help="open the previous full application")
     args, remaining = parser.parse_known_args(argv)
     if args.version:
-        print(f"KazaA v2. revival {VERSION}")
+        print(f"KaZaA v2. revival {VERSION}")
         return 0
     if args.legacy:
         return legacy_main(remaining)
@@ -136,10 +136,10 @@ def main(argv=None):
     from .ui.shell import ShellWindow
     if sys.platform == "win32":
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("KazaA.Start1")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("KaZaA.Start1")
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("KazaA")
-    app.setOrganizationName("KazaA")
+    app.setApplicationName("KaZaA")
+    app.setOrganizationName("KaZaA")
     app.setFont(QFont("Segoe UI", 10))
     window = ShellWindow()
     window.show()

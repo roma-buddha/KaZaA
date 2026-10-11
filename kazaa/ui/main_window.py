@@ -1,4 +1,4 @@
-"""KazaA v2. revival main window: menus, panes, task wiring."""
+"""KaZaA v2. revival main window: menus, panes, task wiring."""
 import os
 import subprocess
 import sys
@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(0)
 
-        # sidebar: KazaA branding on top, navigation below
+        # sidebar: KaZaA branding on top, navigation below
         side = QWidget()
         side.setFixedWidth(210)
         side.setStyleSheet(
@@ -491,7 +491,7 @@ class MainWindow(QMainWindow):
         self.settings.set("language", code)
         self.settings.save()
         QMessageBox.information(self, i18n.tr("prefs_title"),
-                                "Restart KazaA v2. revival to apply the language.")
+                                "Restart KaZaA v2. revival to apply the language.")
 
     def _show_history(self):
         HistoryDialog(self.history, self).exec()

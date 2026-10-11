@@ -13,7 +13,7 @@ HOST, PORT = "127.0.0.1", 8765
 
 
 class _Handler(BaseHTTPRequestHandler):
-    server_version = "KazaABridge/2.0"
+    server_version = "KaZaABridge/2.0"
 
     def log_message(self, *a):  # keep the console clean
         pass
@@ -59,7 +59,7 @@ class BridgeServer:
         try:
             self._httpd = ThreadingHTTPServer((HOST, PORT), _Handler)
         except OSError:
-            self._httpd = None  # port taken (another KazaA v2. revival instance)
+            self._httpd = None  # port taken (another KaZaA v2. revival instance)
             return
         self._httpd.bridge = self.bridge
         self._thread = threading.Thread(target=self._httpd.serve_forever,

@@ -1,13 +1,18 @@
-# KazaA v2. revival
+# KaZaA v2. revival
 
 ## start1: local desktop foundation
 
 This branch starts the rebuild with a native local app shell. It matches Ohana AI's
 cream and terracotta light theme, warm charcoal dark theme, typography, and sidebar.
+The integrated header uses the workspace background, a text-only KaZaA wordmark,
+and a compact row of sidebar, theme and appearance controls. Minimize, maximize,
+restore and close sit at the right. Windows dragging, edge resizing and snapping
+use native frame handling without a separate system title bar.
 The sidebar and workspace are empty so each function can be added from scratch.
 Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
-work. The icon-only gear in the top-right opens a small appearance dialog.
-The rounded K-and-orbit icon has no subtitle or wordmark.
+work. The icon-only gear beside the wordmark controls opens a small appearance dialog.
+The sidebar toggle has no persistent selection outline. The rounded K-and-orbit
+icon is used by the desktop shortcut and taskbar; the header displays only letters.
 
 ```powershell
 python -m venv .venv
@@ -16,7 +21,7 @@ python -m venv .venv
 ```
 
 The shell requires only PySide6 Essentials. It starts no server, makes no network
-requests, and saves its preferences separately in `%APPDATA%\KazaA\shell-settings.json`.
+requests, and saves its preferences separately in `%APPDATA%\KaZaA\shell-settings.json`.
 Use Ctrl+B to toggle the sidebar, Ctrl+, for settings, and Ctrl+Shift+L to change theme.
 
 The previous full app remains available with `python -m kazaa --legacy` and its
@@ -25,14 +30,19 @@ original dependencies. Its existing capabilities are documented below.
 Focused shell checks: `.\.venv\Scripts\python.exe tools/test_shell.py`.
 Theme previews: `.\.venv\Scripts\python.exe tools/preview_shell.py`.
 
-Create or repair the KazaA desktop shortcut:
+Create or repair the KaZaA desktop shortcut:
 `powershell -ExecutionPolicy Bypass -File tools/install_shortcut.ps1`.
 An old VLoader desktop shortcut is backed up under `tools/out/shortcuts/`.
+
+If Codex holds the project folder open during a capitalization change, close
+Codex and KaZaA, then run `powershell -ExecutionPolicy Bypass -File
+"C:\Users\valer\Projects 2027\KazaA\tools\finalize_folder_name.ps1"`.
+The helper updates the folder spelling to `KaZaA` and repairs the desktop shortcut.
 
 **A modern, dark-themed video downloader, converter & screen recorder for Windows —
 built entirely on open-source components (yt-dlp + ffmpeg + PySide6).**
 
-KazaA v2. revival is a clean-room desktop application in the "video downloader converter"
+KaZaA v2. revival is a clean-room desktop application in the "video downloader converter"
 category: paste a link, get the video; convert, trim, merge or record when you
 need more. No accounts, no ads, no telemetry, no license checks.
 
@@ -81,7 +91,7 @@ need more. No accounts, no ads, no telemetry, no license checks.
 
 ### Live streams
 - **Record live streams** — paste a live page URL (e.g. a webcam room) and
-  KazaA v2. revival records it while it plays, with both video and audio
+  KaZaA v2. revival records it while it plays, with both video and audio
 - **● LIVE status** — live tasks show a red badge, an indeterminate progress
   bar and the recording elapsed time instead of a percentage
 - **Graceful stop** — the ⏹ button sends ffmpeg a quit command so the MP4 is
@@ -175,7 +185,7 @@ python tools/screenshot.py    # writes tools/shot_*.png
 
 ### ffmpeg
 
-KazaA v2. revival needs an `ffmpeg.exe` / `ffprobe.exe` build. Either:
+KaZaA v2. revival needs an `ffmpeg.exe` / `ffprobe.exe` build. Either:
 
 - drop a static build into `bin/` (e.g. the "essentials" build from
   https://www.gyan.dev/ffmpeg/builds/), or
@@ -193,8 +203,8 @@ python -m kazaa --legacy --install-plugins        # browser extension instructio
 ```
 
 The release is **2.0.0**. Existing settings, history, and live-recording recovery
-data are copied to `%APPDATA%\KazaA` on first launch; the original data is kept.
-New downloads and screen recordings default to `%USERPROFILE%\Videos\KazaA`.
+data are copied to `%APPDATA%\KaZaA` on first launch; the original data is kept.
+New downloads and screen recordings default to `%USERPROFILE%\Videos\KaZaA`.
 
 ### Browser extensions
 
@@ -224,7 +234,7 @@ New downloads and screen recordings default to `%USERPROFILE%\Videos\KazaA`.
 ```
 kazaa/
   __main__.py        CLI entry (GUI or headless download)
-  settings.py        JSON-backed persistent settings (%APPDATA%\KazaA)
+  settings.py        JSON-backed persistent settings (%APPDATA%\KaZaA)
   history.py         download/convert history (JSON)
   downloader.py      yt-dlp engine, QThread workers, concurrency-limited queue
   converter.py       ffmpeg subprocess wrapper: convert/trim/volume/merge

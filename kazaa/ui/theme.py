@@ -1,6 +1,6 @@
-"""KazaA v2. revival visual theme — dark, modern, applied app-wide via Qt style sheets."""
+"""KaZaA v2. revival visual theme — dark, modern, applied app-wide via Qt style sheets."""
 
-ACCENT = "#c0f800"          # KazaA lime
+ACCENT = "#c0f800"          # KaZaA lime
 ACCENT_HOVER = "#d4ff3d"
 ACCENT_PRESSED = "#a4d400"
 ACCENT_SOFT = "rgba(192, 248, 0, 0.14)"

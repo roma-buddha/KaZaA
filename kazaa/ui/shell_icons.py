@@ -9,6 +9,9 @@ PATHS = {
     "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
     "moon": '<path d="M20.5 14.1A9 9 0 0 1 9.9 3.5 9 9 0 1 0 20.5 14.1z"/>',
     "close": '<path d="m6 6 12 12M18 6 6 18"/>',
+    "minimize": '<path d="M6 12h12"/>',
+    "maximize": '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+    "restore": '<path d="M9 6h9v9M9 9V6"/><rect x="5" y="10" width="9" height="9" rx="1"/>',
 }
 
 

@@ -62,7 +62,7 @@ class Recorder(QObject):
             import time
             stamp = time.strftime("%Y%m%d_%H%M%S")
             out_path = os.path.join(os.path.expanduser("~"), "Videos",
-                                    "KazaA", f"record_{stamp}.mp4")
+                                    "KaZaA", f"record_{stamp}.mp4")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         ffmpeg = find_ffmpeg() or "ffmpeg"
         args = [ffmpeg, "-y", "-nostdin", "-hide_banner",

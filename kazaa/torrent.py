@@ -60,7 +60,7 @@ def _session():
             "enable_natpmp": False,
             "announce_to_all_trackers": True,
             "announce_to_all_tiers": True,
-            "user_agent": "KazaA/2.0",
+            "user_agent": "KaZaA/2.0",
         })
     return _SESSION
 
@@ -96,7 +96,7 @@ class TorrentWorker(QThread):
             return p, None
         if re.match(r"^https?://", src, re.I):
             req = urllib.request.Request(src, headers={
-                "User-Agent": "Mozilla/5.0 (KazaA)"})
+                "User-Agent": "Mozilla/5.0 (KaZaA)"})
             with urllib.request.urlopen(req, timeout=30) as r:
                 raw = r.read()
         else:

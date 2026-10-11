@@ -1,4 +1,8 @@
-# KazaA start1 logo
+# KaZaA start1 logo
+
+Archived artwork from the first foundation build. The current header uses a text
+wordmark with the spelling **KaZaA**. The original generation prompt below is kept
+verbatim as provenance and does not define the current branding.
 
 Generated with the built-in imagegen tool using the user's attached original logo as a visual reference. Saved at `kazaa/ui/assets/logo-start1.png`. The existing logo assets are preserved for the previous application.
 

@@ -1,4 +1,4 @@
-# KazaA app icon
+# KaZaA app icon
 
 Created with the built-in imagegen tool from the user's K-and-orbit reference.
 The generated alpha is preserved in `kazaa/ui/assets/icon-start1.png`.

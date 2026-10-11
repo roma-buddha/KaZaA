@@ -6,14 +6,14 @@ if (-not (Test-Path -LiteralPath $launcher) -or -not (Test-Path -LiteralPath $ap
     throw 'Set up the local desktop runtime and app icon first.'
 }
 $desktopRoot = [Environment]::GetFolderPath('Desktop')
-$shortcutPath = Join-Path $desktopRoot 'KazaA.lnk'
+$shortcutPath = Join-Path $desktopRoot 'KaZaA.lnk'
 $shortcutShell = New-Object -ComObject WScript.Shell
 $shortcut = $shortcutShell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $launcher
 $shortcut.Arguments = '-m kazaa'
 $shortcut.WorkingDirectory = $projectRoot
 $shortcut.IconLocation = "$appIcon,0"
-$shortcut.Description = 'KazaA'
+$shortcut.Description = 'KaZaA'
 $shortcut.Save()
 $verified = $shortcutShell.CreateShortcut($shortcutPath)
 if ($verified.TargetPath -ne $launcher -or $verified.WorkingDirectory -ne $projectRoot -or
@@ -26,5 +26,14 @@ if (Test-Path -LiteralPath $oldShortcut) {
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
     $backupPath = Join-Path $backupRoot ('VLoader-{0}.lnk' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
     Move-Item -LiteralPath $oldShortcut -Destination $backupPath
+}
+# Windows treats differently capitalized shortcut names as the same path.
+# A temporary hop also updates the spelling displayed by Explorer.
+$existing = Get-ChildItem -LiteralPath $desktopRoot -Filter '*.lnk' |
+    Where-Object { $_.Name -ieq 'KaZaA.lnk' -and $_.Name -cne 'KaZaA.lnk' }
+foreach ($item in $existing) {
+    $temporaryShortcut = Join-Path $desktopRoot ('kazaa-shortcut-{0}.lnk' -f [guid]::NewGuid())
+    Move-Item -LiteralPath $item.FullName -Destination $temporaryShortcut
+    Move-Item -LiteralPath $temporaryShortcut -Destination $shortcutPath
 }
 Write-Output "Verified desktop shortcut: $shortcutPath"

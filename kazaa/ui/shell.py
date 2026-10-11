@@ -3,15 +3,16 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QDialog, QHBoxLayout, QLabel,
-                               QMainWindow, QMessageBox, QPushButton,
+                               QMessageBox, QPushButton,
                                QSplitter, QSplitterHandle, QVBoxLayout, QWidget)
 
 from ..rsrc import asset
 from ..settings import config_dir
 from . import shell_preferences, shell_theme
 from .shell_icons import icon
+from .shell_frame import ShellFrame
 
 
 class SidebarHandle(QSplitterHandle):
@@ -90,21 +91,29 @@ class AppearanceDialog(QDialog):
         self.close_button.setIcon(icon("close", colors["muted"]))
 
 
-class ShellWindow(QMainWindow):
+class ShellWindow(ShellFrame):
     def __init__(self, preferences_path=None):
         super().__init__()
         self.preferences_path = Path(preferences_path) if preferences_path else Path(config_dir(), "shell-settings.json")
         self.preferences = shell_preferences.load(self.preferences_path)
         self._ready = False
         self._save_error_reported = False
-        self.setWindowTitle("KazaA · v2. revival")
+        self.setWindowTitle("KaZaA · v2. revival")
         self.setWindowIcon(QIcon(asset("icon-start1.ico")))
         self.resize(1200, 800)
         self.setMinimumSize(820, 600)
         self.splitter = SidebarSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(6)
         self.splitter.setChildrenCollapsible(False)
-        self.setCentralWidget(self.splitter)
+        root = QWidget()
+        root.setObjectName("root")
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        self.topbar = self._build_topbar()
+        root_layout.addWidget(self.topbar)
+        root_layout.addWidget(self.splitter, 1)
+        self.setCentralWidget(root)
 
         self.sidebar = QWidget()
         self.sidebar.setObjectName("sidebar")
@@ -113,12 +122,6 @@ class ShellWindow(QMainWindow):
         self.splitter.addWidget(self.sidebar)
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(20, 24, 20, 24)
-        self.brand_icon = QLabel()
-        self.brand_icon.setAccessibleName("KazaA")
-        self.brand_icon.setFixedSize(68, 68)
-        self.brand_icon.setPixmap(QPixmap(asset("icon-start1.png")).scaled(
-            68, 68, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        sidebar_layout.addWidget(self.brand_icon, 0, Qt.AlignLeft)
         sidebar_layout.addStretch()
 
         self.workspace = QWidget()
@@ -128,7 +131,6 @@ class ShellWindow(QMainWindow):
         workspace_layout = QVBoxLayout(self.workspace)
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
-        workspace_layout.addWidget(self._build_topbar())
         self.canvas = QWidget()
         self.canvas.setObjectName("canvas")
         self.canvas.setAccessibleName("Workspace")
@@ -147,6 +149,7 @@ class ShellWindow(QMainWindow):
                                    ("Ctrl+Shift+L", self.toggle_theme)]:
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(callback)
+        self.initialize_frame()
 
     def _icon_button(self, accessible_name):
         button = QPushButton()
@@ -162,21 +165,46 @@ class ShellWindow(QMainWindow):
     def _build_topbar(self):
         topbar = QWidget()
         topbar.setObjectName("topbar")
-        topbar.setFixedHeight(64)
+        topbar.setFixedHeight(58)
         layout = QHBoxLayout(topbar)
-        layout.setContentsMargins(24, 0, 24, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 0, 8, 0)
+        layout.setSpacing(4)
+        self.wordmark = QLabel()
+        self.wordmark.setObjectName("wordmark")
+        self.wordmark.setAccessibleName("KaZaA")
+        self.wordmark.setTextFormat(Qt.RichText)
+        self.wordmark.setContentsMargins(0, 0, 14, 0)
+        layout.addWidget(self.wordmark)
         self.sidebar_toggle = self._icon_button("Hide sidebar · Ctrl+B")
+        self.sidebar_toggle.setObjectName("sidebarToggle")
         self.sidebar_toggle.clicked.connect(self.toggle_sidebar)
         layout.addWidget(self.sidebar_toggle)
-        layout.addStretch()
         self.theme_toggle = self._icon_button("Switch theme")
         self.theme_toggle.clicked.connect(self.toggle_theme)
         layout.addWidget(self.theme_toggle)
         self.settings_button = self._icon_button("Settings · Ctrl+,")
         self.settings_button.clicked.connect(self.show_settings)
         layout.addWidget(self.settings_button)
+        layout.addStretch()
+        self.minimize_button = self._icon_button("Minimize")
+        self.minimize_button.clicked.connect(self.showMinimized)
+        self.maximize_button = self._icon_button("Maximize")
+        self.maximize_button.clicked.connect(self.toggle_maximized)
+        self.close_button = self._icon_button("Close")
+        self.close_button.setObjectName("windowClose")
+        self.close_button.clicked.connect(self.close)
+        for button in (self.minimize_button, self.maximize_button, self.close_button):
+            button.setFixedSize(42, 36)
+            layout.addWidget(button)
         return topbar
+
+    def update_window_controls(self):
+        if not hasattr(self, "colors"):
+            return
+        action = "Restore" if self.isMaximized() else "Maximize"
+        self.maximize_button.setToolTip(action)
+        self.maximize_button.setAccessibleName(action)
+        self.maximize_button.setIcon(icon(action.lower(), self.colors["muted"]))
 
     def show_settings(self):
         self.appearance.adjustSize()
@@ -211,6 +239,10 @@ class ShellWindow(QMainWindow):
         self.theme_toggle.setToolTip(tooltip)
         self.theme_toggle.setAccessibleName(tooltip)
         self.settings_button.setIcon(icon("settings", self.colors["muted"]))
+        self.wordmark.setText(f"Ka<span style='color:{self.colors['accent']}'>Z</span>aA")
+        self.minimize_button.setIcon(icon("minimize", self.colors["muted"]))
+        self.close_button.setIcon(icon("close", self.colors["muted"]))
+        self.update_window_controls()
         self.appearance.sync(mode, self.colors)
 
     def toggle_sidebar(self):

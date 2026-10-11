@@ -9,7 +9,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QStackedWidget, QWidget
 from kazaa.ui.shell import ShellWindow
@@ -124,6 +124,56 @@ class ShellTests(unittest.TestCase):
         self.assertNotIn("page", loaded)
         shell_preferences.save(self.path, loaded)
         self.assertNotIn("page", json.loads(self.path.read_text()))
+
+    def test_wordmark_and_controls_stay_visible_when_sidebar_is_hidden(self):
+        self.assertEqual(self.window.wordmark.accessibleName(), "KaZaA")
+        self.assertFalse(hasattr(self.window, "brand_icon"))
+        self.window.toggle_sidebar()
+        self.assertTrue(self.window.wordmark.isVisible())
+        for button in (self.window.sidebar_toggle, self.window.theme_toggle,
+                       self.window.settings_button, self.window.minimize_button,
+                       self.window.maximize_button, self.window.close_button):
+            self.assertTrue(button.isVisible())
+            self.assertEqual(button.parentWidget(), self.window.topbar)
+
+    def test_sidebar_toggle_does_not_keep_a_selected_state(self):
+        self.click(self.window.sidebar_toggle)
+        self.click(self.window.sidebar_toggle)
+        self.window.sidebar_toggle.setFocus()
+        self.assertFalse(self.window.sidebar_toggle.isCheckable())
+        QTest.keyClick(self.window.sidebar_toggle, Qt.Key_Space)
+        self.app.processEvents()
+        self.assertFalse(self.window.sidebar.isVisible())
+
+    def test_maximize_restore_and_minimize_controls(self):
+        self.assertTrue(self.window.windowFlags() & Qt.FramelessWindowHint)
+        self.click(self.window.maximize_button)
+        self.assertTrue(self.window.isMaximized())
+        self.assertEqual(self.window.maximize_button.accessibleName(), "Restore")
+        self.click(self.window.maximize_button)
+        self.assertFalse(self.window.isMaximized())
+        self.assertEqual(self.window.maximize_button.accessibleName(), "Maximize")
+        self.click(self.window.minimize_button)
+        self.assertTrue(self.window.isMinimized())
+        self.window.showNormal()
+
+    def test_close_control_saves_preferences(self):
+        self.window.set_theme("dark")
+        self.click(self.window.close_button)
+        self.assertFalse(self.window.isVisible())
+        self.assertEqual(json.loads(self.path.read_text())["theme"], "dark")
+
+    def test_native_header_hit_regions_keep_buttons_out_of_drag_area(self):
+        def hit(point):
+            return self.window._frame_hit_test(point, self.window.width(), self.window.height(), 6)
+        self.assertEqual(hit(QPoint(1, 1)), 13)
+        self.assertEqual(hit(QPoint(self.window.width() - 1, self.window.height() - 1)), 17)
+        self.assertEqual(hit(QPoint(600, 29)), 2)
+        self.assertEqual(hit(self.window.settings_button.mapTo(self.window, self.window.settings_button.rect().center())), 1)
+        self.assertEqual(hit(self.window.maximize_button.mapTo(self.window, self.window.maximize_button.rect().center())), 9)
+        self.window.showMaximized()
+        self.app.processEvents()
+        self.assertNotEqual(hit(QPoint(1, 1)), 13)
 
 
 if __name__ == "__main__":

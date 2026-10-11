@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "KazaA v2. revival Helper",
+  "name": "KaZaA v2. revival Helper",
   "version": "2.0.0",
-  "description": "Sends the current page's video URL to KazaA v2. revival for downloading.",
+  "description": "Sends the current page's video URL to KaZaA v2. revival for downloading.",
   "permissions": ["activeTab", "scripting"],
   "host_permissions": ["<all_urls>", "http://127.0.0.1:8765/*"],
   "action": {
-    "default_title": "Download with KazaA v2. revival",
+    "default_title": "Download with KaZaA v2. revival",
     "default_popup": "popup.html"
   },
   "content_scripts": [
