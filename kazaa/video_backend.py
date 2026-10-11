@@ -192,7 +192,8 @@ def perform_download(request, emit):
         total = data.get("total_bytes") or data.get("total_bytes_estimate")
         percent = 100 * data.get("downloaded_bytes", 0) / total if total else None
         emit("progress", {"status": "downloading" if data.get("status") == "downloading" else "processing",
-                          "percent": percent, "speed": data.get("speed"), "eta": data.get("eta")})
+                          "percent": percent, "speed": data.get("speed"), "eta": data.get("eta"),
+                          "downloaded_bytes": data.get("downloaded_bytes"), "total_bytes": total})
     moved = []
     def postprocess(data):
         emit("progress", {"status": "processing", "percent": None})

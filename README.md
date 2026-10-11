@@ -10,7 +10,7 @@ restore and close sit at the right. Windows dragging, edge resizing and snapping
 use native frame handling without a separate system title bar.
 The sidebar has two pages: **Search** and **Downloaded**.
 Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
-work. The icon-only gear beside the wordmark controls opens a small appearance dialog.
+work. The icon-only gear beside the wordmark opens theme and download-folder settings.
 The sidebar toggle has no persistent selection outline. The rounded K-and-orbit
 icon is used by the desktop shortcut and taskbar; the header displays only letters.
 
@@ -34,20 +34,27 @@ and Ctrl+L to focus Search.
 
 Paste one or several video links into Search, then click **Inspect** or press Enter.
 Shift+Enter adds another line. Each result shows its title, thumbnail, creator,
-duration and caption availability. YouTube and other yt-dlp-supported video sites
+and duration. YouTube and other yt-dlp-supported video sites
 use the same workflow; individual site restrictions can still prevent extraction.
-Open **Download options** to choose:
+After inspection, choose separately for each result:
 
 - Video: MP4, MKV or WebM, with best quality or a resolution provided by the source.
 - Audio: MP3, M4A, FLAC, WAV or OGG, with bitrate choices for lossy formats.
 - Transcript/subtitles: SRT, VTT, TXT or Markdown, in an available language,
   using creator-provided or automatically generated captions.
-- Optional captions alongside video/audio, and a remembered destination folder.
+- Caption source and language appear only for Transcript. Video/audio exports
+  do not include captions. Set the remembered **Download folder** in the gear Settings.
 
 Click a result's **Download**, or select results and choose **Download selected**.
 Two jobs run at a time; each keeps the options selected when it was queued.
-Downloaded shows progress, speed, ETA, cancellation/retry, and completed files
-with **Open file** and **Show in folder** actions. History survives restarting;
+Search uses a transparent input with no enclosing panel, centered at 65% of the
+main workspace width. Downloaded uses centered tables at 70%, split into
+**In progress** and **Downloaded**, with name, media type/format, quality,
+source (**Link** or **Torrent**), size and progress. Smaller windows use more
+of the available width, with horizontal table scrolling when necessary.
+Right-click a row for **Cancel**, **Retry**, **Open file** or **Show in folder**,
+as applicable; the keyboard menu key and Shift+F10 also work. Speed is shown
+with progress, ETA and errors are available on hover. History survives restarting;
 interrupted jobs wait for an explicit retry. Unavailable options produce an error.
 This rebuild currently accepts individual video URLs only: playlist-only URLs,
 live recordings and torrents/magnet links are not enabled. Keyword search and

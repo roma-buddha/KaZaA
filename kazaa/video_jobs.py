@@ -206,7 +206,7 @@ class VideoQueue(QObject):
             raise ValueError("This download is already in the queue.")
         job_id = uuid.uuid4().hex
         self.jobs[job_id] = {"id": job_id, "url": url, "title": info["title"],
-                            "options": snapshot, "status": "queued", "percent": None,
+                            "options": snapshot, "source": "link", "status": "queued", "percent": None,
                             "files": [], "created": time.time(), "error": ""}
         self._changed(job_id)
         self._pump()
@@ -280,7 +280,8 @@ class VideoQueue(QObject):
     def retry(self, job_id):
         if job_id in self.workers or self.jobs[job_id]["status"] not in ("failed", "cancelled", "interrupted"):
             return
-        self.jobs[job_id].update(status="queued", error="", percent=None, files=[])
+        self.jobs[job_id].update(status="queued", error="", percent=None, files=[],
+                                 total_bytes=None, downloaded_bytes=None, speed=None, eta=None)
         self._changed(job_id)
         self._pump()
 

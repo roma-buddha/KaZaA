@@ -5,7 +5,7 @@ import sys
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QDialog, QHBoxLayout, QLabel,
-                               QMessageBox, QPushButton,
+                               QFileDialog, QLineEdit, QMessageBox, QPushButton,
                                QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
 from ..rsrc import asset
@@ -14,7 +14,7 @@ from . import shell_preferences, shell_theme
 from .shell_icons import icon
 from .shell_frame import ShellFrame
 from ..video_jobs import VideoQueue
-from .video_pages import DownloadedPage, SearchPage
+from .video_pages import DownloadedPage, SearchPage, save_folder
 
 
 class SidebarHandle(QSplitterHandle):
@@ -47,14 +47,14 @@ class AppearanceDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
         self.setObjectName("appearance")
-        self.setWindowTitle("Appearance")
-        self.setAccessibleName("Appearance settings")
-        self.setFixedWidth(400)
+        self.setWindowTitle("Settings")
+        self.setAccessibleName("Settings")
+        self.setFixedWidth(460)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 22)
         layout.setSpacing(18)
         header = QHBoxLayout()
-        heading = QLabel("Appearance")
+        heading = QLabel("Settings")
         heading.setProperty("role", "heading")
         header.addWidget(heading)
         header.addStretch()
@@ -83,7 +83,34 @@ class AppearanceDialog(QDialog):
             self.theme_buttons[mode] = button
             options.addWidget(button, 1)
         layout.addLayout(options)
+        folder_label = QLabel("Download folder")
+        folder_label.setProperty("role", "muted")
+        layout.addWidget(folder_label)
+        folder_row = QHBoxLayout()
+        self.folder = QLineEdit(save_folder(parent.download_queue))
+        self.folder.setAccessibleName("Download folder")
+        self.folder.setMinimumWidth(0)
+        self.folder.editingFinished.connect(self._save_folder)
+        folder_row.addWidget(self.folder, 1)
+        self.browse_button = QPushButton("Browse…")
+        self.browse_button.clicked.connect(self._browse_folder)
+        folder_row.addWidget(self.browse_button)
+        layout.addLayout(folder_row)
         self.close_button.setCursor(Qt.PointingHandCursor)
+
+    def _save_folder(self):
+        queue = self.parentWidget().download_queue
+        folder = self.folder.text().strip()
+        if folder:
+            queue.set_options({**queue.options, "folder": folder})
+        else:
+            self.folder.setText(save_folder(queue))
+
+    def _browse_folder(self):
+        selected = QFileDialog.getExistingDirectory(self.parentWidget(), "Download folder", self.folder.text())
+        if selected:
+            self.folder.setText(selected)
+            self._save_folder()
 
     def sync(self, mode, colors):
         self.theme_buttons[mode].setChecked(True)

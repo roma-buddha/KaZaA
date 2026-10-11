@@ -11,7 +11,9 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtTest import QTest
+from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import QApplication
 from kazaa import transcripts, video_backend as backend
 from kazaa.video_jobs import Inspector, VideoQueue
@@ -200,7 +202,8 @@ class VideoTests(unittest.TestCase):
         window.download_queue.worker_factory = FakeWorker
         page = window.search_page
         page.inspector.worker_factory = FakeWorker
-        page.folder.setText(str(self.root))
+        window.appearance.folder.setText(str(self.root))
+        window.appearance._save_folder()
         window.show()
         page.input.setPlainText("https://example.com/one\nhttps://example.com/two\nmagnet:?xt=x")
         page.inspect()
@@ -209,16 +212,117 @@ class VideoTests(unittest.TestCase):
             if info["url"].endswith("two"):
                 info["heights"] = [360]
             worker.succeed(info)
-        page.quality.setCurrentIndex(page.quality.findData("720"))
+        first = page.cards["https://example.com/one"].options_panel
+        second = page.cards["https://example.com/two"].options_panel
+        first.quality.setCurrentIndex(first.quality.findData("720"))
+        second.kind.setCurrentIndex(second.kind.findData("transcript"))
+        second.caption_source.setCurrentIndex(second.caption_source.findData("automatic"))
+        page.cards["https://example.com/two"].info["captions"]["automatic"] = {}
         page._download_selected()
         self.assertEqual(len(window.download_queue.jobs), 1)
-        self.assertIn("720p", page.cards["https://example.com/two"].status.text())
+        self.assertIn("caption", page.cards["https://example.com/two"].status.text())
         self.assertIn("planned", page.cards["magnet:?xt=x"].status.text())
-        self.assertEqual(len(window.downloaded_page.cards), 1)
+        self.assertEqual(window.downloaded_page.active_table.rowCount(), 1)
         for worker in list(window.download_queue.workers.values()):
             worker.fail("Cancelled")
         window.close()
         self.app.processEvents()
+
+    def test_each_result_keeps_its_own_type_and_quality_without_caption_sidecars(self):
+        from kazaa.ui.video_pages import SearchPage, VideoCard
+        page = SearchPage(self.queue)
+        for url in ("https://example.com/one", "https://example.com/two"):
+            card = VideoCard(url, self.queue)
+            card.set_result(media(url))
+            page.cards[url] = card
+            page.cards_layout.addWidget(card)
+        first, second = list(page.cards.values())
+        first.options_panel.quality.setCurrentIndex(first.options_panel.quality.findData("720"))
+        second.options_panel.kind.setCurrentIndex(second.options_panel.kind.findData("audio"))
+        second.options_panel.format.setCurrentIndex(second.options_panel.format.findData("mp3"))
+        second.options_panel.quality.setCurrentIndex(second.options_panel.quality.findData("192"))
+        page._download_selected()
+        jobs = list(self.queue.jobs.values())
+        self.assertEqual([(j["options"]["kind"], j["options"]["quality"]) for j in jobs], [("video", "720"), ("audio", "192")])
+        self.assertTrue(all(j["options"]["captions"] is False for j in jobs))
+        self.assertEqual(first.options_panel.quality.currentData(), "720")
+        self.assertTrue(second.options_panel.caption_fields.isHidden())
+        second.options_panel.kind.setCurrentIndex(second.options_panel.kind.findData("transcript"))
+        self.assertFalse(second.options_panel.caption_fields.isHidden())
+        self.assertTrue(second.options_panel.quality.isHidden())
+        page.deleteLater()
+
+    def test_folder_settings_persist_and_only_affect_new_downloads(self):
+        window = ShellWindow(self.root / "shell.json")
+        queue = window.download_queue
+        queue.worker_factory = FakeWorker
+        queue.set_options({"folder": str(self.root / "first")})
+        first = queue.submit(media(), backend.DownloadOptions(folder=str(self.root / "first")))
+        window.appearance.folder.setText(str(self.root / "next"))
+        window.appearance._save_folder()
+        with patch("kazaa.ui.shell.QFileDialog.getExistingDirectory", return_value=str(self.root / "next")):
+            window.appearance._browse_folder()
+        from kazaa.ui.video_pages import ResultOptions
+        options = ResultOptions(queue)
+        options.set_info(media())
+        second = queue.submit(media("https://example.com/next"), options.options())
+        self.assertEqual(queue.jobs[first]["options"]["folder"], str(self.root / "first"))
+        self.assertEqual(queue.jobs[second]["options"]["folder"], str(self.root / "next"))
+        restored = VideoQueue(queue.path, worker_factory=FakeWorker)
+        self.assertEqual(restored.options["folder"], str(self.root / "next"))
+        for worker in list(queue.workers.values()):
+            worker.fail("Cancelled")
+        window.close()
+
+    def test_table_updates_size_progress_and_moves_completed_rows(self):
+        from kazaa.ui.video_pages import DownloadedPage
+        page = DownloadedPage(self.queue)
+        job_id = self.queue.submit(media(), self.options)
+        worker = self.queue.workers[job_id]
+        worker.progress.emit({"status": "downloading", "percent": 50, "total_bytes": 2048, "downloaded_bytes": 1024})
+        self.assertEqual(page.active_table.rowCount(), 1)
+        self.assertEqual(page.active_table.item(0, 1).text(), "Video · MP4")
+        self.assertEqual(page.active_table.item(0, 3).text(), "Link")
+        self.assertEqual(page.active_table.item(0, 4).text(), "2.0 KB")
+        self.assertEqual(page.active_table.cellWidget(0, 5).bar.value(), 50)
+        output = self.root / "video.mp4"
+        output.write_bytes(b"done")
+        worker.succeed({"files": [str(output)], "size": 4})
+        self.assertEqual(page.active_table.rowCount(), 0)
+        self.assertEqual(page.completed_table.rowCount(), 1)
+        self.assertEqual(page.completed_table.item(0, 4).text(), "4 B")
+        page.deleteLater()
+
+    def test_table_context_actions_and_keyboard_menu(self):
+        from kazaa.ui.video_pages import DownloadedPage
+        page = DownloadedPage(self.queue)
+        job_id = self.queue.submit(media(), self.options)
+        worker = self.queue.workers[job_id]
+        page.context_menu(job_id).actions()[0].trigger()
+        self.assertTrue(worker.cancelled)
+        worker.fail("Cancelled")
+        self.assertEqual(page.context_menu(job_id).actions()[0].text(), "Retry")
+        page.context_menu(job_id).actions()[0].trigger()
+        output = self.root / "video.mp4"
+        output.write_bytes(b"done")
+        self.queue.workers[job_id].succeed({"files": [str(output)], "size": 4})
+        menu = page.context_menu(job_id)
+        self.assertEqual([a.text() for a in menu.actions()], ["Open file", "Show in folder"])
+        with patch("kazaa.ui.video_pages.QDesktopServices.openUrl") as opened:
+            menu.actions()[0].trigger()
+            self.assertEqual(opened.call_args[0][0].toLocalFile(), str(output).replace("\\", "/"))
+            menu.actions()[1].trigger()
+            self.assertEqual(opened.call_args[0][0].toLocalFile(), str(self.root).replace("\\", "/"))
+        page.completed_table.menu_requested.disconnect()
+        events = []
+        page.completed_table.menu_requested.connect(lambda job_id, position: events.append(job_id))
+        page.completed_table.selectRow(0)
+        QTest.keyClick(page.completed_table, Qt.Key_F10, Qt.ShiftModifier)
+        self.assertEqual(events, [job_id])
+        position = page.completed_table.visualItemRect(page.completed_table.item(0, 0)).center()
+        self.app.sendEvent(page.completed_table.viewport(), QContextMenuEvent(QContextMenuEvent.Mouse, position, page.completed_table.viewport().mapToGlobal(position)))
+        self.assertEqual(events, [job_id, job_id])
+        page.deleteLater()
 
 
 if __name__ == "__main__":

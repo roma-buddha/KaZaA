@@ -47,7 +47,7 @@ class ShellTests(unittest.TestCase):
         self.click(self.window.navigation_buttons["search"])
         self.assertEqual(self.window.canvas.currentWidget(), self.window.search_page)
         forbidden = {"Local workspace", "On this computer", "Overview", "WORKSPACE",
-                     "MEDIA", "COLLECTION", "Downloads", "Music", "Convert", "Recorder", "Library", "Settings"}
+                     "MEDIA", "COLLECTION", "Downloads", "Music", "Convert", "Recorder", "Library"}
         for widget in self.window.findChildren(QLabel):
             self.assertNotIn(widget.text(), forbidden)
         for button in (self.window.theme_toggle, self.window.settings_button):

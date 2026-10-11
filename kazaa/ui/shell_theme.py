@@ -34,9 +34,11 @@ def stylesheet(c):
     QPushButton[role='icon'] {{ color: {c['muted']}; }}
     QPushButton#sidebarToggle:focus {{ border: 1px solid transparent; }}
     QPushButton#windowClose:hover {{ background: #b94a45; }}
-    QPushButton[role='nav'] {{ text-align: left; padding: 12px; min-height: 22px; }}
+    QPushButton[role='nav'] {{ text-align: left; padding: 12px; min-height: 22px; font-size: 12pt; }}
     QPushButton[role='nav']:checked {{ background: {c['accent_soft']}; color: {c['accent']}; }}
     QWidget#page, QScrollArea {{ background: {c['paper']}; border: none; }}
+    QWidget#pageContent {{ background: transparent; }}
+    QFrame#videoResult {{ background: transparent; border: none; border-top: 1px solid {c['line']}; }}
     QFrame[role='panel'], QFrame[role='card'] {{ background: {c['surface']};
         border: 1px solid {c['line']}; border-radius: 8px; }}
     QLabel[role='pageTitle'] {{ font-family: Georgia; font-size: 28px; }}
@@ -51,6 +53,7 @@ def stylesheet(c):
     QPlainTextEdit, QLineEdit, QComboBox {{ background: {c['paper']}; border: 1px solid {c['line']};
         border-radius: 5px; padding: 8px; selection-background-color: {c['accent_soft']}; }}
     QPlainTextEdit:focus, QLineEdit:focus, QComboBox:focus {{ border-color: {c['accent']}; }}
+    QPlainTextEdit#omniInput {{ background: transparent; padding: 16px; }}
     QComboBox {{ min-height: 18px; }}
     QComboBox::drop-down {{ width: 22px; border: none; }}
     QComboBox::down-arrow {{ image: url("{arrow}"); width: 12px; height: 12px; }}
@@ -61,9 +64,23 @@ def stylesheet(c):
     QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{check}"); }}
     QProgressBar {{ background: {c['hover']}; border: none; border-radius: 2px; }}
     QProgressBar::chunk {{ background: {c['accent']}; border-radius: 2px; }}
+    QTableWidget#downloadsTable {{ background: transparent; border: none; outline: none;
+        selection-background-color: {c['accent_soft']}; selection-color: {c['ink']}; }}
+    QTableWidget#downloadsTable::item {{ padding: 8px; border-bottom: 1px solid {c['line']}; }}
+    QHeaderView {{ background: transparent; }}
+    QHeaderView::section {{ background: {c['paper']}; color: {c['muted']}; font-size: 12px;
+        border: none; border-bottom: 1px solid {c['line']}; padding: 10px 8px; text-align: left; }}
+    QMenu {{ background: {c['surface']}; border: 1px solid {c['line']}; padding: 5px; }}
+    QMenu::item {{ padding: 8px 18px; }}
+    QMenu::item:selected {{ background: {c['accent_soft']}; }}
+    QMenu::item:disabled {{ color: {c['muted']}; }}
     QScrollBar:vertical {{ background: {c['paper']}; width: 8px; margin: 0; }}
     QScrollBar::handle:vertical {{ background: {c['line']}; min-height: 24px; border-radius: 4px; }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar:horizontal {{ background: {c['paper']}; height: 8px; margin: 0; }}
+    QScrollBar::handle:horizontal {{ background: {c['line']}; min-width: 24px; border-radius: 4px; }}
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
     QPushButton[role='theme'] {{ background: {c['surface']}; border: 1px solid {c['line']};
         padding: 16px; text-align: left; }}
     QPushButton[role='theme']:checked {{ background: {c['accent_soft']};
