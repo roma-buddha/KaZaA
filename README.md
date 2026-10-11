@@ -1,5 +1,29 @@
 # KazaA v2. revival
 
+## start1: local desktop foundation
+
+This branch starts the rebuild with a native local app shell. It matches Ohana AI's
+cream and terracotta light theme, warm charcoal dark theme, typography, and sidebar.
+Navigation, sidebar collapse/resizing, keyboard shortcuts, and saved appearance
+preferences work. Media pages are intentionally empty; their tools come next.
+The square KazaA logo has no subtitle.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-shell.txt
+.\kazaa.bat
+```
+
+The shell requires only PySide6 Essentials. It starts no server, makes no network
+requests, and saves its preferences separately in `%APPDATA%\KazaA\shell-settings.json`.
+Use Ctrl+B to toggle the sidebar, Ctrl+, for settings, and Ctrl+Shift+L to change theme.
+
+The previous full app remains available with `python -m kazaa --legacy` and its
+original dependencies. Its existing capabilities are documented below.
+
+Focused shell checks: `.\.venv\Scripts\python.exe tools/test_shell.py`.
+Theme previews: `.\.venv\Scripts\python.exe tools/preview_shell.py`.
+
 **A modern, dark-themed video downloader, converter & screen recorder for Windows —
 built entirely on open-source components (yt-dlp + ffmpeg + PySide6).**
 
@@ -11,7 +35,7 @@ need more. No accounts, no ads, no telemetry, no license checks.
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## Features
+## Previous app features (`--legacy`)
 
 ### Download
 - **1000+ sites** via the bundled yt-dlp engine: YouTube, Vimeo, Dailymotion,
@@ -158,9 +182,9 @@ KazaA v2. revival needs an `ffmpeg.exe` / `ffprobe.exe` build. Either:
 
 ```
 kazaa.bat                                # GUI
-python -m kazaa --url "https://..."      # add a download on launch
-python -m kazaa --url "..." --quality 720 --exit force
-python -m kazaa --install-plugins        # browser extension instructions
+python -m kazaa --legacy --url "https://..."      # previous app: download on launch
+python -m kazaa --legacy --url "..." --quality 720 --exit force
+python -m kazaa --legacy --install-plugins        # browser extension instructions
 ```
 
 The release is **2.0.0**. Existing settings, history, and live-recording recovery

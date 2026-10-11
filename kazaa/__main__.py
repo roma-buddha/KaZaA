@@ -16,7 +16,7 @@ def _redirect_stderr():
         pass
 
 
-def main(argv=None):
+def legacy_main(argv=None):
     _redirect_stderr()
     p = argparse.ArgumentParser(prog="kazaa",
                                 description="KazaA v2. revival - video downloader/converter")
@@ -116,6 +116,31 @@ def _plugin_instructions(install=True):
           if install else
           f"  Firefox: open about:addons and remove 'KazaA v2. revival Helper'")
     return 0
+
+
+def main(argv=None):
+    from . import VERSION
+    parser = argparse.ArgumentParser(prog="kazaa", description="KazaA v2. revival — local desktop workspace")
+    parser.add_argument("--version", action="store_true")
+    parser.add_argument("--legacy", action="store_true", help="open the previous full application")
+    args, remaining = parser.parse_known_args(argv)
+    if args.version:
+        print(f"KazaA v2. revival {VERSION}")
+        return 0
+    if args.legacy:
+        return legacy_main(remaining)
+    if remaining:
+        parser.error("media CLI options belong to the previous app; use --legacy before those options")
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+    from .ui.shell import ShellWindow
+    app = QApplication(sys.argv[:1])
+    app.setApplicationName("KazaA")
+    app.setOrganizationName("KazaA")
+    app.setFont(QFont("Segoe UI", 10))
+    window = ShellWindow()
+    window.show()
+    return app.exec()
 
 
 if __name__ == "__main__":
