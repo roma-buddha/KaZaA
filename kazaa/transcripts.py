@@ -45,7 +45,10 @@ def _clean_text(lines):
 
 def parse_cues(path):
     """Parse a .vtt or .srt file into [(start_s, end_s, text), ...]."""
-    raw = open(path, "r", encoding="utf-8-sig", errors="replace").read()
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as stream:
+        raw = stream.read()
+    if not raw.strip():
+        return []
     if path.lower().endswith(".srt") or "-->" not in raw.splitlines()[0] and \
        raw.lstrip().startswith("1"):
         return _parse_srt(raw)
@@ -149,13 +152,16 @@ def to_markdown(cues, title="", source_url="", lang="", with_timestamps=True):
 
 
 def convert(src, target_fmt, source_url="", with_timestamps=True, title=None):
-    """Convert a .vtt/.srt transcript to 'srt', 'vtt' or 'md'.
+    """Convert a .vtt/.srt transcript to 'srt', 'vtt', 'txt' or 'md'.
     Returns the output path."""
     cues = parse_cues(src)
     base, _ = os.path.splitext(src)
     if title is None:
         title = os.path.basename(base)
-    if target_fmt == "md":
+    if target_fmt == "txt":
+        out = f"{base}.txt"
+        content = "\n".join(text for _start, _end, text in cues) + "\n"
+    elif target_fmt == "md":
         out = f"{base}.md"
         content = to_markdown(cues, title=title, source_url=source_url,
                               with_timestamps=with_timestamps)

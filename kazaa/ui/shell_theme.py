@@ -1,4 +1,5 @@
 """Ohana AI's desktop colors, adapted to Qt's native widgets."""
+from pathlib import Path
 
 LIGHT = {
     "paper": "#f8f5ee", "surface": "#fffdf9", "sidebar": "#f0ede6",
@@ -15,6 +16,9 @@ DARK = {
 
 
 def stylesheet(c):
+    assets = Path(__file__).with_name("assets")
+    arrow = (assets / "dropdown.svg").as_posix()
+    check = (assets / ("check-dark.svg" if c is DARK else "check-light.svg")).as_posix()
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Segoe UI'; font-size: 13px; }}
     QMainWindow, QWidget#root, QWidget#workspace, QWidget#canvas {{ background: {c['paper']}; }}
@@ -30,6 +34,36 @@ def stylesheet(c):
     QPushButton[role='icon'] {{ color: {c['muted']}; }}
     QPushButton#sidebarToggle:focus {{ border: 1px solid transparent; }}
     QPushButton#windowClose:hover {{ background: #b94a45; }}
+    QPushButton[role='nav'] {{ text-align: left; padding: 12px; min-height: 22px; }}
+    QPushButton[role='nav']:checked {{ background: {c['accent_soft']}; color: {c['accent']}; }}
+    QWidget#page, QScrollArea {{ background: {c['paper']}; border: none; }}
+    QFrame[role='panel'], QFrame[role='card'] {{ background: {c['surface']};
+        border: 1px solid {c['line']}; border-radius: 8px; }}
+    QLabel[role='pageTitle'] {{ font-family: Georgia; font-size: 28px; }}
+    QLabel[role='sectionTitle'] {{ font-size: 15px; font-weight: 600; }}
+    QLabel[role='cardTitle'] {{ font-size: 15px; font-weight: 600; }}
+    QLabel[role='muted'] {{ color: {c['muted']}; font-size: 12px; }}
+    QLabel[role='error'] {{ color: {c['accent']}; font-size: 12px; }}
+    QLabel#thumbnail {{ background: {c['hover']}; border-radius: 5px; }}
+    QPushButton[role='primary'] {{ background: {c['accent']}; color: {c['on_accent']};
+        padding: 9px 16px; min-height: 18px; }}
+    QPushButton[role='primary']:disabled {{ background: {c['hover']}; color: {c['muted']}; }}
+    QPlainTextEdit, QLineEdit, QComboBox {{ background: {c['paper']}; border: 1px solid {c['line']};
+        border-radius: 5px; padding: 8px; selection-background-color: {c['accent_soft']}; }}
+    QPlainTextEdit:focus, QLineEdit:focus, QComboBox:focus {{ border-color: {c['accent']}; }}
+    QComboBox {{ min-height: 18px; }}
+    QComboBox::drop-down {{ width: 22px; border: none; }}
+    QComboBox::down-arrow {{ image: url("{arrow}"); width: 12px; height: 12px; }}
+    QComboBox QAbstractItemView {{ background: {c['surface']}; color: {c['ink']};
+        selection-background-color: {c['accent_soft']}; border: 1px solid {c['line']}; }}
+    QCheckBox {{ spacing: 8px; background: transparent; }}
+    QCheckBox::indicator {{ width: 15px; height: 15px; border: 1px solid {c['muted']}; border-radius: 3px; }}
+    QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{check}"); }}
+    QProgressBar {{ background: {c['hover']}; border: none; border-radius: 2px; }}
+    QProgressBar::chunk {{ background: {c['accent']}; border-radius: 2px; }}
+    QScrollBar:vertical {{ background: {c['paper']}; width: 8px; margin: 0; }}
+    QScrollBar::handle:vertical {{ background: {c['line']}; min-height: 24px; border-radius: 4px; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QPushButton[role='theme'] {{ background: {c['surface']}; border: 1px solid {c['line']};
         padding: 16px; text-align: left; }}
     QPushButton[role='theme']:checked {{ background: {c['accent_soft']};

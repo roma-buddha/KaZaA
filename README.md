@@ -1,6 +1,6 @@
 # KaZaA v2. revival
 
-## start1: local desktop foundation
+## start1: local desktop app
 
 This branch starts the rebuild with a native local app shell. It matches Ohana AI's
 cream and terracotta light theme, warm charcoal dark theme, typography, and sidebar.
@@ -8,7 +8,7 @@ The integrated header uses the workspace background, a text-only KaZaA wordmark,
 and a compact row of sidebar, theme and appearance controls. Minimize, maximize,
 restore and close sit at the right. Windows dragging, edge resizing and snapping
 use native frame handling without a separate system title bar.
-The sidebar and workspace are empty so each function can be added from scratch.
+The sidebar has two pages: **Search** and **Downloaded**.
 Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
 work. The icon-only gear beside the wordmark controls opens a small appearance dialog.
 The sidebar toggle has no persistent selection outline. The rounded K-and-orbit
@@ -16,18 +16,48 @@ icon is used by the desktop shortcut and taskbar; the header displays only lette
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-shell.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-video.txt
 .\kazaa.bat
 ```
 
-The shell requires only PySide6 Essentials. It starts no server, makes no network
-requests, and saves its preferences separately in `%APPDATA%\KaZaA\shell-settings.json`.
-Use Ctrl+B to toggle the sidebar, Ctrl+, for settings, and Ctrl+Shift+L to change theme.
+The app uses PySide6 Essentials and yt-dlp. Video/audio exports need FFmpeg;
+install it on PATH or use the existing bundled tools. YouTube extraction also
+uses Node.js 22 or newer on PATH and the solver included by `yt-dlp[default]`.
+Caption-only exports do not require FFmpeg. There is no local server; network
+requests happen when you inspect or download a link.
+Appearance is saved in `%APPDATA%\KaZaA\shell-settings.json`; download options
+and history are saved in `%APPDATA%\KaZaA\video-downloads.json`.
+Use Ctrl+B to toggle the sidebar, Ctrl+, for settings, Ctrl+Shift+L to change theme,
+and Ctrl+L to focus Search.
+
+### Search and downloads
+
+Paste one or several video links into Search, then click **Inspect** or press Enter.
+Shift+Enter adds another line. Each result shows its title, thumbnail, creator,
+duration and caption availability. YouTube and other yt-dlp-supported video sites
+use the same workflow; individual site restrictions can still prevent extraction.
+Open **Download options** to choose:
+
+- Video: MP4, MKV or WebM, with best quality or a resolution provided by the source.
+- Audio: MP3, M4A, FLAC, WAV or OGG, with bitrate choices for lossy formats.
+- Transcript/subtitles: SRT, VTT, TXT or Markdown, in an available language,
+  using creator-provided or automatically generated captions.
+- Optional captions alongside video/audio, and a remembered destination folder.
+
+Click a result's **Download**, or select results and choose **Download selected**.
+Two jobs run at a time; each keeps the options selected when it was queued.
+Downloaded shows progress, speed, ETA, cancellation/retry, and completed files
+with **Open file** and **Show in folder** actions. History survives restarting;
+interrupted jobs wait for an explicit retry. Unavailable options produce an error.
+This rebuild currently accepts individual video URLs only: playlist-only URLs,
+live recordings and torrents/magnet links are not enabled. Keyword search and
+torrent support remain future work.
 
 The previous full app remains available with `python -m kazaa --legacy` and its
 original dependencies. Its existing capabilities are documented below.
 
 Focused shell checks: `.\.venv\Scripts\python.exe tools/test_shell.py`.
+Focused video checks: `.\.venv\Scripts\python.exe tools/test_video_workflow.py`.
 Theme previews: `.\.venv\Scripts\python.exe tools/preview_shell.py`.
 
 Create or repair the KaZaA desktop shortcut:

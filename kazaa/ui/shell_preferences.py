@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 DEFAULTS = {"theme": "light", "sidebar_width": 250,
-            "sidebar_collapsed": False}
+            "sidebar_collapsed": False, "page": "search"}
 
 
 def load(path):
@@ -16,6 +16,8 @@ def load(path):
         return data
     if saved.get("theme") in ("light", "dark"):
         data["theme"] = saved["theme"]
+    if saved.get("page") in ("search", "downloaded"):
+        data["page"] = saved["page"]
     width = saved.get("sidebar_width")
     if type(width) is int:
         data["sidebar_width"] = max(200, min(420, width))

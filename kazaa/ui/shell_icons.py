@@ -12,6 +12,10 @@ PATHS = {
     "minimize": '<path d="M6 12h12"/>',
     "maximize": '<rect x="6" y="6" width="12" height="12" rx="1"/>',
     "restore": '<path d="M9 6h9v9M9 9V6"/><rect x="5" y="10" width="9" height="9" rx="1"/>',
+    "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
+    "downloaded": '<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
+    "chevron_down": '<path d="m6 9 6 6 6-6"/>',
+    "chevron_right": '<path d="m9 6 6 6-6 6"/>',
 }
 
 

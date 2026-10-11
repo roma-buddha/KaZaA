@@ -2,17 +2,19 @@
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QButtonGroup, QDialog, QHBoxLayout, QLabel,
                                QMessageBox, QPushButton,
-                               QSplitter, QSplitterHandle, QVBoxLayout, QWidget)
+                               QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
 from ..rsrc import asset
 from ..settings import config_dir
 from . import shell_preferences, shell_theme
 from .shell_icons import icon
 from .shell_frame import ShellFrame
+from ..video_jobs import VideoQueue
+from .video_pages import DownloadedPage, SearchPage
 
 
 class SidebarHandle(QSplitterHandle):
@@ -121,7 +123,21 @@ class ShellWindow(ShellFrame):
         self.sidebar.setMaximumWidth(420)
         self.splitter.addWidget(self.sidebar)
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(20, 24, 20, 24)
+        sidebar_layout.setContentsMargins(14, 22, 14, 24)
+        sidebar_layout.setSpacing(8)
+        self.navigation_group = QButtonGroup(self)
+        self.navigation_buttons = {}
+        for key, title in (("search", "Search"), ("downloaded", "Downloaded")):
+            button = QPushButton(title)
+            button.setProperty("role", "nav")
+            button.setCheckable(True)
+            button.setAccessibleName(title)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setIconSize(QSize(18, 18))
+            button.clicked.connect(lambda checked=False, page=key: self.navigate(page))
+            self.navigation_group.addButton(button)
+            self.navigation_buttons[key] = button
+            sidebar_layout.addWidget(button)
         sidebar_layout.addStretch()
 
         self.workspace = QWidget()
@@ -131,10 +147,15 @@ class ShellWindow(ShellFrame):
         workspace_layout = QVBoxLayout(self.workspace)
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
-        self.canvas = QWidget()
+        self.canvas = QStackedWidget()
         self.canvas.setObjectName("canvas")
         self.canvas.setAccessibleName("Workspace")
         workspace_layout.addWidget(self.canvas, 1)
+        self.download_queue = VideoQueue(self.preferences_path.parent / "video-downloads.json", self)
+        self.search_page = SearchPage(self.download_queue)
+        self.downloaded_page = DownloadedPage(self.download_queue)
+        self.canvas.addWidget(self.search_page)
+        self.canvas.addWidget(self.downloaded_page)
         self.appearance = AppearanceDialog(self)
         self.appearance.theme_changed.connect(self.set_theme)
 
@@ -145,11 +166,28 @@ class ShellWindow(ShellFrame):
         self._apply_theme()
         self._set_collapsed(self.preferences["sidebar_collapsed"])
         self._ready = True
+        self.navigate(self.preferences["page"])
         for sequence, callback in [("Ctrl+B", self.toggle_sidebar), ("Ctrl+,", self.show_settings),
                                    ("Ctrl+Shift+L", self.toggle_theme)]:
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.activated.connect(callback)
+        focus_links = QShortcut(QKeySequence("Ctrl+L"), self)
+        focus_links.activated.connect(self._focus_links)
         self.initialize_frame()
+
+    def navigate(self, page):
+        if page not in self.navigation_buttons:
+            return
+        self.preferences["page"] = page
+        self.canvas.setCurrentIndex(0 if page == "search" else 1)
+        self.navigation_buttons[page].setChecked(True)
+        for key, button in self.navigation_buttons.items():
+            button.setIcon(icon(key, self.colors["accent"] if key == page else self.colors["muted"]))
+        self._save()
+
+    def _focus_links(self):
+        self.navigate("search")
+        self.search_page.input.setFocus()
 
     def _icon_button(self, accessible_name):
         button = QPushButton()
@@ -239,6 +277,8 @@ class ShellWindow(ShellFrame):
         self.theme_toggle.setToolTip(tooltip)
         self.theme_toggle.setAccessibleName(tooltip)
         self.settings_button.setIcon(icon("settings", self.colors["muted"]))
+        for key, button in self.navigation_buttons.items():
+            button.setIcon(icon(key, self.colors["accent"] if button.isChecked() else self.colors["muted"]))
         self.wordmark.setText(f"Ka<span style='color:{self.colors['accent']}'>Z</span>aA")
         self.minimize_button.setIcon(icon("minimize", self.colors["muted"]))
         self.close_button.setIcon(icon("close", self.colors["muted"]))
@@ -278,6 +318,13 @@ class ShellWindow(ShellFrame):
                 QMessageBox.warning(self, "Preferences", "Your appearance preferences could not be saved.")
 
     def closeEvent(self, event):
+        self.search_page.inspector.stop()
+        self.download_queue.stop()
+        if self.search_page.inspector.workers or self.download_queue.workers:
+            event.ignore()
+            self.setEnabled(False)
+            QTimer.singleShot(100, self.close)
+            return
         self.appearance.close()
         self._save()
         super().closeEvent(event)

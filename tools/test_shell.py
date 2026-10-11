@@ -38,11 +38,14 @@ class ShellTests(unittest.TestCase):
         QTest.mouseClick(widget, Qt.LeftButton)
         self.app.processEvents()
 
-    def test_removed_navigation_and_copy_are_not_in_the_shell(self):
-        self.assertFalse(self.window.sidebar.findChildren(QPushButton))
-        self.assertFalse(self.window.findChildren(QStackedWidget))
-        self.assertFalse(self.window.canvas.findChildren(QWidget))
-        self.assertFalse(hasattr(self.window, "navigate"))
+    def test_only_search_and_downloaded_navigation_are_available(self):
+        self.assertEqual(set(self.window.navigation_buttons), {"search", "downloaded"})
+        self.assertEqual(len(self.window.sidebar.findChildren(QPushButton)), 2)
+        self.assertEqual(self.window.canvas.count(), 2)
+        self.click(self.window.navigation_buttons["downloaded"])
+        self.assertEqual(self.window.canvas.currentWidget(), self.window.downloaded_page)
+        self.click(self.window.navigation_buttons["search"])
+        self.assertEqual(self.window.canvas.currentWidget(), self.window.search_page)
         forbidden = {"Local workspace", "On this computer", "Overview", "WORKSPACE",
                      "MEDIA", "COLLECTION", "Downloads", "Music", "Convert", "Recorder", "Library", "Settings"}
         for widget in self.window.findChildren(QLabel):
@@ -90,7 +93,7 @@ class ShellTests(unittest.TestCase):
             reopened.show()
             self.app.processEvents()
             self.assertEqual(reopened.preferences["theme"], "dark")
-            self.assertNotIn("page", reopened.preferences)
+            self.assertEqual(reopened.preferences["page"], "search")
             self.assertFalse(reopened.sidebar.isVisible())
         finally:
             reopened.close()
@@ -121,9 +124,9 @@ class ShellTests(unittest.TestCase):
         loaded = shell_preferences.load(self.path)
         self.assertEqual(loaded["theme"], "dark")
         self.assertEqual(loaded["sidebar_width"], 310)
-        self.assertNotIn("page", loaded)
+        self.assertEqual(loaded["page"], "search")
         shell_preferences.save(self.path, loaded)
-        self.assertNotIn("page", json.loads(self.path.read_text()))
+        self.assertEqual(json.loads(self.path.read_text())["page"], "search")
 
     def test_wordmark_and_controls_stay_visible_when_sidebar_is_hidden(self):
         self.assertEqual(self.window.wordmark.accessibleName(), "KaZaA")
