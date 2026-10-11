@@ -84,6 +84,8 @@ class DownloadOptions:
             raise ValueError("Choose a supported output format.")
         if not self.folder:
             raise ValueError("Choose a save folder.")
+        if info.get("live") and (self.kind == "transcript" or self.captions):
+            raise ValueError("Live streams support video or audio recording; transcripts are available after the broadcast.")
         if self.kind == "video":
             if not info.get("has_video"):
                 raise ValueError("This link has no video stream.")
@@ -119,14 +121,13 @@ def runtime_options():
 def summarize(info, url):
     if not info or info.get("_type") in ("playlist", "multi_video"):
         raise ValueError("Paste an individual video link, not a playlist or channel.")
-    if info.get("is_live") or info.get("live_status") == "is_live":
-        raise ValueError("Live streams are not supported in this version.")
     formats = info.get("formats") or [info]
     caption_tracks = {}
     for key, field in (("manual", "subtitles"), ("automatic", "automatic_captions")):
         caption_tracks[key] = {lang: tracks[0].get("name", lang)
                                for lang, tracks in (info.get(field) or {}).items() if tracks}
     return {"url": url, "title": info.get("title") or url,
+            "live": bool(info.get("is_live") or info.get("live_status") == "is_live"),
             "creator": info.get("channel") or info.get("uploader") or "",
             "duration": info.get("duration"), "site": info.get("extractor_key") or urlsplit(url).hostname,
             "has_video": any(f.get("vcodec") != "none" and
@@ -146,6 +147,20 @@ def inspect_video(url, thumbnail=True):
     with yt_dlp.YoutubeDL(runtime_options()) as ydl:
         raw = ydl.extract_info(url, download=False)
     result = summarize(raw, url)
+    if not result["live"]:
+        # Direct HLS URLs do not always carry the extractor's live flag.
+        for fmt in raw.get("formats") or [raw]:
+            if "m3u8" not in (fmt.get("protocol") or ""):
+                continue
+            try:
+                request = Request(fmt["url"], headers=fmt.get("http_headers") or raw.get("http_headers") or {})
+                with urlopen(request, timeout=8) as response:
+                    playlist = response.read(256 * 1024).decode("utf-8", errors="replace")
+                if "#EXTINF:" in playlist:
+                    result["live"] = "#EXT-X-ENDLIST" not in playlist
+                    break
+            except (OSError, ValueError, KeyError):
+                continue
     if thumbnail and raw.get("thumbnail"):
         try:
             request = Request(raw["thumbnail"], headers={"User-Agent": "Mozilla/5.0"})
@@ -183,7 +198,7 @@ def export_options(options, job_id):
     return opts
 
 
-def perform_download(request, emit):
+def perform_download(request, emit, stop_event=None):
     import yt_dlp
     url = validate_url(request["url"])
     options = DownloadOptions.from_dict(request["options"])
@@ -204,8 +219,13 @@ def perform_download(request, emit):
     opts["postprocessor_hooks"] = [postprocess]
     with yt_dlp.YoutubeDL(opts) as ydl:
         raw = ydl.extract_info(url, download=False)
-        options.validate(summarize(raw, url))
+        metadata = summarize(raw, url)
+        metadata["live"] = metadata["live"] or request.get("live", False)
+        options.validate(metadata)
         Path(options.folder).mkdir(parents=True, exist_ok=True)
+        if metadata["live"]:
+            from .video_live import record_live
+            return record_live(raw, options, ydl.prepare_filename(raw), emit, stop_event)
         info = ydl.process_ie_result(raw, download=True)
         if not info:
             raise ValueError("The site returned no downloadable media.")

@@ -37,6 +37,7 @@ class FakeWorker(QObject):
         super().__init__(parent)
         self.request = request
         self.cancelled = False
+        self.stopped = False
         self.started = False
         self.created.append(self)
 
@@ -45,6 +46,9 @@ class FakeWorker(QObject):
 
     def cancel(self):
         self.cancelled = True
+
+    def stop(self):
+        self.stopped = True
 
     def succeed(self, data):
         self.result.emit(data)
@@ -101,13 +105,16 @@ class VideoTests(unittest.TestCase):
         self.assertIn("planned", entries[1]["error"])
         self.assertNotIn("kazaa.torrent", sys.modules)
 
-    def test_playlist_and_live_sources_are_explicitly_rejected(self):
+    def test_playlist_is_rejected_and_live_sources_are_identified(self):
         with self.assertRaises(ValueError):
             backend.validate_url("https://youtube.com/playlist?list=abc")
         with self.assertRaises(ValueError):
             backend.summarize({"_type": "playlist"}, "https://example.com")
-        with self.assertRaises(ValueError):
-            backend.summarize({"is_live": True}, "https://example.com")
+        info = backend.summarize({"is_live": True, "ext": "mp4"}, "https://example.com")
+        self.assertTrue(info["live"])
+        backend.DownloadOptions(folder=str(self.root)).validate(info)
+        with self.assertRaisesRegex(ValueError, "Live streams"):
+            backend.DownloadOptions(kind="transcript", format="txt", folder=str(self.root)).validate(info)
 
     def test_unavailable_resolution_and_caption_source_are_not_silently_changed(self):
         with self.assertRaisesRegex(ValueError, "1080p"):
@@ -281,16 +288,17 @@ class VideoTests(unittest.TestCase):
         worker = self.queue.workers[job_id]
         worker.progress.emit({"status": "downloading", "percent": 50, "total_bytes": 2048, "downloaded_bytes": 1024})
         self.assertEqual(page.active_table.rowCount(), 1)
-        self.assertEqual(page.active_table.item(0, 1).text(), "Video · MP4")
-        self.assertEqual(page.active_table.item(0, 3).text(), "Link")
-        self.assertEqual(page.active_table.item(0, 4).text(), "2.0 KB")
-        self.assertEqual(page.active_table.cellWidget(0, 5).bar.value(), 50)
+        self.assertEqual(page.active_table.item(0, 1).text(), "Video")
+        self.assertEqual(page.active_table.item(0, 2).text(), "MP4")
+        self.assertEqual(page.active_table.item(0, 4).text(), "Link")
+        self.assertEqual(page.active_table.item(0, 5).text(), "2.0 KB")
+        self.assertEqual(page.active_table.cellWidget(0, 6).bar.value(), 50)
         output = self.root / "video.mp4"
         output.write_bytes(b"done")
         worker.succeed({"files": [str(output)], "size": 4})
         self.assertEqual(page.active_table.rowCount(), 0)
         self.assertEqual(page.completed_table.rowCount(), 1)
-        self.assertEqual(page.completed_table.item(0, 4).text(), "4 B")
+        self.assertEqual(page.completed_table.item(0, 5).text(), "4 B")
         page.deleteLater()
 
     def test_table_context_actions_and_keyboard_menu(self):
@@ -298,10 +306,11 @@ class VideoTests(unittest.TestCase):
         page = DownloadedPage(self.queue)
         job_id = self.queue.submit(media(), self.options)
         worker = self.queue.workers[job_id]
-        page.context_menu(job_id).actions()[0].trigger()
+        self.assertEqual([a.text() for a in page.context_menu(job_id).actions()], ["Pause", "Stop"])
+        page.context_menu(job_id).actions()[1].trigger()
         self.assertTrue(worker.cancelled)
         worker.fail("Cancelled")
-        self.assertEqual(page.context_menu(job_id).actions()[0].text(), "Retry")
+        self.assertEqual(page.context_menu(job_id).actions()[0].text(), "Resume")
         page.context_menu(job_id).actions()[0].trigger()
         output = self.root / "video.mp4"
         output.write_bytes(b"done")
@@ -323,6 +332,88 @@ class VideoTests(unittest.TestCase):
         self.app.sendEvent(page.completed_table.viewport(), QContextMenuEvent(QContextMenuEvent.Mouse, position, page.completed_table.viewport().mapToGlobal(position)))
         self.assertEqual(events, [job_id, job_id])
         page.deleteLater()
+
+    def test_pause_resume_keeps_job_id_and_partial_options(self):
+        job_id = self.queue.submit(media(), self.options)
+        worker = self.queue.workers[job_id]
+        worker.progress.emit({"status": "downloading", "percent": 25})
+        self.queue.pause(job_id)
+        worker.progress.emit({"status": "downloading", "percent": 30})
+        self.assertEqual(self.queue.jobs[job_id]["status"], "pausing")
+        worker.fail("Cancelled")
+        self.assertEqual(self.queue.jobs[job_id]["status"], "paused")
+        restored = VideoQueue(self.queue.path, worker_factory=FakeWorker)
+        self.assertEqual(restored.jobs[job_id]["status"], "paused")
+        self.assertEqual(restored.workers, {})
+        with self.assertRaises(ValueError):
+            self.queue.submit(media(), self.options)
+        self.queue.resume(job_id)
+        self.assertEqual(self.queue.workers[job_id].request["id"], job_id)
+        self.assertEqual(self.queue.workers[job_id].request["options"], self.options.to_dict())
+
+    def test_live_stop_finalizes_and_keeps_file_in_downloaded_group(self):
+        from kazaa.ui.video_pages import DownloadedPage
+        page = DownloadedPage(self.queue)
+        info = {**media(), "live": True}
+        job_id = self.queue.submit(info, self.options)
+        worker = self.queue.workers[job_id]
+        worker.progress.emit({"status": "recording", "live": True, "elapsed": 65, "size": 2048})
+        self.assertEqual(page.active_table.cellWidget(0, 6).state.text(), "LIVE · 1:05")
+        self.assertEqual([a.text() for a in page.context_menu(job_id).actions()], ["Stop"])
+        self.queue.pause(job_id)
+        self.assertFalse(worker.cancelled)
+        self.queue.stop_job(job_id)
+        self.assertTrue(worker.stopped)
+        self.assertFalse(worker.cancelled)
+        worker.progress.emit({"status": "recording", "elapsed": 70})
+        self.assertEqual(self.queue.jobs[job_id]["status"], "stopping")
+        output = self.root / "recording.mp4"
+        output.write_bytes(b"playable test fixture")
+        worker.succeed({"files": [str(output)], "size": output.stat().st_size, "live": True, "stopped": True})
+        self.assertEqual(self.queue.jobs[job_id]["status"], "completed")
+        self.assertEqual(page.completed_table.rowCount(), 1)
+        page.deleteLater()
+
+    def test_live_close_requests_graceful_stop_and_preserves_completed_capture(self):
+        job_id = self.queue.submit({**media(), "live": True}, self.options)
+        worker = self.queue.workers[job_id]
+        self.queue.stop()
+        self.assertTrue(worker.stopped)
+        self.assertFalse(worker.cancelled)
+        output = self.root / "closing.mp4"
+        output.write_bytes(b"saved")
+        worker.succeed({"files": [str(output)], "live": True})
+        self.assertEqual(self.queue.jobs[job_id]["status"], "completed")
+
+    def test_failed_live_stop_does_not_claim_a_completed_file(self):
+        job_id = self.queue.submit({**media(), "live": True}, self.options)
+        worker = self.queue.workers[job_id]
+        self.queue.stop_job(job_id)
+        worker.fail("Cancelled")
+        self.assertEqual(self.queue.jobs[job_id]["status"], "stopped")
+        self.assertEqual(self.queue.jobs[job_id]["files"], [])
+        self.assertIn("partial", self.queue.jobs[job_id]["error"])
+
+    def test_live_format_selection_preserves_resolution_and_separate_audio(self):
+        from kazaa.video_live import recording_command, select_streams
+        info = {"formats": [{"url": "https://example.com/360", "height": 360, "vcodec": "h264", "acodec": "none"},
+                            {"url": "https://example.com/720", "height": 720, "vcodec": "h264", "acodec": "none"},
+                            {"url": "https://example.com/audio", "vcodec": "none", "acodec": "aac"}]}
+        options = backend.DownloadOptions(quality="360", folder=str(self.root))
+        self.assertEqual([f["url"] for f in select_streams(info, options)], ["https://example.com/360", "https://example.com/audio"])
+        command = recording_command(info, options, self.root / "capture.part")
+        self.assertIn("1:a:0?", command)
+        self.assertIn("+frag_keyframe+empty_moov", command)
+
+    def test_live_result_has_record_action_and_disables_transcript_capture(self):
+        from kazaa.ui.video_pages import VideoCard
+        self.queue.set_options({"kind": "transcript", "format": "txt", "folder": str(self.root)})
+        card = VideoCard("https://example.com/live", self.queue)
+        card.set_result({**media(), "live": True})
+        self.assertEqual(card.download.text(), "Record")
+        self.assertEqual(card.options_panel.kind.currentData(), "video")
+        self.assertFalse(card.options_panel.kind.model().item(2).isEnabled())
+        card.deleteLater()
 
 
 if __name__ == "__main__":

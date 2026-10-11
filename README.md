@@ -8,7 +8,7 @@ The integrated header uses the workspace background, a text-only KaZaA wordmark,
 and a compact row of sidebar, theme and appearance controls. Minimize, maximize,
 restore and close sit at the right. Windows dragging, edge resizing and snapping
 use native frame handling without a separate system title bar.
-The sidebar has two pages: **Search** and **Downloaded**.
+The sidebar has two pages: **Search** and **Download**.
 Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
 work. The icon-only gear beside the wordmark opens theme and download-folder settings.
 The sidebar toggle has no persistent selection outline. The rounded K-and-orbit
@@ -36,7 +36,8 @@ Paste one or several video links into Search, then click **Inspect** or press En
 Shift+Enter adds another line. Each result shows its title, thumbnail, creator,
 and duration. YouTube and other yt-dlp-supported video sites
 use the same workflow; individual site restrictions can still prevent extraction.
-After inspection, choose separately for each result:
+After inspection, choose separately for each result using the compact controls
+and Download button in a single row to the right of the preview:
 
 - Video: MP4, MKV or WebM, with best quality or a resolution provided by the source.
 - Audio: MP3, M4A, FLAC, WAV or OGG, with bitrate choices for lossy formats.
@@ -48,17 +49,33 @@ After inspection, choose separately for each result:
 Click a result's **Download**, or select results and choose **Download selected**.
 Two jobs run at a time; each keeps the options selected when it was queued.
 Search uses a transparent input with no enclosing panel, centered at 65% of the
-main workspace width. Downloaded uses centered tables at 70%, split into
-**In progress** and **Downloaded**, with name, media type/format, quality,
+main workspace width. Download uses centered tables at 70%, split into
+**In progress** and **Downloaded**, with name, separate type and format columns, quality,
 source (**Link** or **Torrent**), size and progress. Smaller windows use more
 of the available width, with horizontal table scrolling when necessary.
-Right-click a row for **Cancel**, **Retry**, **Open file** or **Show in folder**,
+Right-click a row for **Pause**, **Resume**, **Stop**, **Retry**, **Open file** or **Show in folder**,
 as applicable; the keyboard menu key and Shift+F10 also work. Speed is shown
 with progress, ETA and errors are available on hover. History survives restarting;
 interrupted jobs wait for an explicit retry. Unavailable options produce an error.
-This rebuild currently accepts individual video URLs only: playlist-only URLs,
-live recordings and torrents/magnet links are not enabled. Keyword search and
-torrent support remain future work.
+This rebuild accepts individual video and live-stream URLs. Playlist-only URLs
+and torrents/magnet links are not enabled. Keyword search and torrent support
+remain future work.
+
+### Live streams
+
+Paste a live-stream URL into the same input and inspect it. Detected live streams
+show **LIVE** and a **Record** action, with video or audio choices. Live video
+supports MP4/MKV/WebM; audio supports MP3/M4A/FLAC/WAV/OGG. Transcripts can be
+exported once the broadcast is available as a regular video.
+In Download, a recording shows elapsed time and the growing file size.
+Right-click **Stop** to finalize and save it in the Downloaded group. Closing
+the app also requests a graceful recording stop. A forced interruption preserves
+the `.part` recording; MP4/M4A use fragmented output so recorded fragments remain
+recoverable. Retrying a live stream starts a new capture with a new filename.
+Regular downloads retain partial files during Pause/Stop and continue on Resume
+when the source supports byte-range requests. Paused jobs remain paused after
+restarting the app. Live recording offers Stop rather than Pause because a live
+broadcast cannot wait while recording is paused.
 
 The previous full app remains available with `python -m kazaa --legacy` and its
 original dependencies. Its existing capabilities are documented below.

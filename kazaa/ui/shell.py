@@ -154,7 +154,7 @@ class ShellWindow(ShellFrame):
         sidebar_layout.setSpacing(8)
         self.navigation_group = QButtonGroup(self)
         self.navigation_buttons = {}
-        for key, title in (("search", "Search"), ("downloaded", "Downloaded")):
+        for key, title in (("search", "Search"), ("downloaded", "Download")):
             button = QPushButton(title)
             button.setProperty("role", "nav")
             button.setCheckable(True)

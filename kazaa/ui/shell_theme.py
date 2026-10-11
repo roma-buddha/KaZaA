@@ -38,6 +38,7 @@ def stylesheet(c):
     QPushButton[role='nav']:checked {{ background: {c['accent_soft']}; color: {c['accent']}; }}
     QWidget#page, QScrollArea {{ background: {c['paper']}; border: none; }}
     QWidget#pageContent {{ background: transparent; }}
+    QWidget#resultRow {{ background: transparent; }}
     QFrame#videoResult {{ background: transparent; border: none; border-top: 1px solid {c['line']}; }}
     QFrame[role='panel'], QFrame[role='card'] {{ background: {c['surface']};
         border: 1px solid {c['line']}; border-radius: 8px; }}

@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QPoint, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFrame,
-    QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMenu, QPlainTextEdit,
+    QHBoxLayout, QHeaderView, QLabel, QMenu, QPlainTextEdit,
     QProgressBar, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget)
 
@@ -54,9 +54,10 @@ def file_size(value):
 
 
 class CenteredPage(QScrollArea):
-    def __init__(self, fraction, parent=None):
+    def __init__(self, fraction, parent=None, breakpoint=850):
         super().__init__(parent)
         self.fraction = fraction
+        self.breakpoint = breakpoint
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.NoFrame)
         body = QWidget()
@@ -76,7 +77,7 @@ class CenteredPage(QScrollArea):
 
     def _fit_width(self):
         width = self.viewport().width()
-        self.content.setFixedWidth(max(300, int(width * self.fraction if width >= 850 else width - 48)))
+        self.content.setFixedWidth(max(300, int(width * self.fraction if width >= self.breakpoint else width - 48)))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -100,37 +101,30 @@ class ResultOptions(QWidget):
     def __init__(self, queue):
         super().__init__()
         self.queue, self.info, self._updating = queue, {}, True
-        self.grid = QGridLayout(self)
+        self.grid = QHBoxLayout(self)
         self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setHorizontalSpacing(12)
-        self.grid.setVerticalSpacing(7)
+        self.grid.setSpacing(7)
         self.kind, self.format, self.quality = QComboBox(), QComboBox(), QComboBox()
         for title, value in (("Video", "video"), ("Audio", "audio"), ("Transcript", "transcript")):
             self.kind.addItem(title, value)
-        for column, (title, widget) in enumerate((("Download as", self.kind), ("Format", self.format), ("Quality", self.quality))):
-            heading = label(title, "muted")
-            if widget is self.quality:
-                self.quality_label = heading
-            self.grid.addWidget(heading, 0, column)
+        for title, widget, width in (("Download as", self.kind, 100), ("Format", self.format, 78), ("Quality", self.quality, 84)):
             widget.setAccessibleName(title)
-            widget.setMinimumWidth(0)
-            self.grid.addWidget(widget, 1, column)
-            self.grid.setColumnStretch(column, 1)
+            widget.setToolTip(title)
+            widget.setFixedWidth(width)
+            self.grid.addWidget(widget)
         self.caption_fields = QWidget()
-        captions_grid = QGridLayout(self.caption_fields)
-        captions_grid.setContentsMargins(0, 8, 0, 0)
-        captions_grid.setHorizontalSpacing(12)
-        captions_grid.setVerticalSpacing(7)
+        captions_grid = QHBoxLayout(self.caption_fields)
+        captions_grid.setContentsMargins(0, 0, 0, 0)
+        captions_grid.setSpacing(7)
         self.caption_source, self.language = QComboBox(), QComboBox()
-        self.caption_source.addItem("Creator-provided", "manual")
+        self.caption_source.addItem("Creator", "manual")
         self.caption_source.addItem("Automatic", "automatic")
-        for column, (title, widget) in enumerate((("Caption source", self.caption_source), ("Language", self.language))):
-            captions_grid.addWidget(label(title, "muted"), 0, column)
+        for title, widget, width in (("Caption source", self.caption_source, 102), ("Language", self.language, 105)):
             widget.setAccessibleName(title)
-            widget.setMinimumWidth(0)
-            captions_grid.addWidget(widget, 1, column)
-            captions_grid.setColumnStretch(column, 1)
-        self.grid.addWidget(self.caption_fields, 2, 0, 1, 3)
+            widget.setToolTip(title)
+            widget.setFixedWidth(width)
+            captions_grid.addWidget(widget)
+        self.grid.addWidget(self.caption_fields)
         self._updating = False
         self._refresh()
         for combo in (self.kind, self.format, self.quality, self.caption_source, self.language):
@@ -153,6 +147,9 @@ class ResultOptions(QWidget):
         index = self.kind.findData(saved.get("kind"))
         if index >= 0:
             self.kind.setCurrentIndex(index)
+        self.kind.model().item(self.kind.findData("transcript")).setEnabled(not info.get("live"))
+        if info.get("live") and self.kind.currentData() == "transcript":
+            self.kind.setCurrentIndex(0)
         source = saved.get("caption_source", "manual")
         if not info.get("captions", {}).get(source) and info.get("captions", {}).get("automatic"):
             source = "automatic"
@@ -184,8 +181,6 @@ class ResultOptions(QWidget):
         self._fill(self.quality, qualities)
         quality_visible = kind != "transcript" and not (kind == "audio" and self.format.currentData() in ("wav", "flac"))
         self.quality.setVisible(quality_visible)
-        self.quality_label.setVisible(quality_visible)
-        self.grid.setColumnStretch(2, 1 if quality_visible else 0)
         self.caption_fields.setVisible(kind == "transcript")
         languages = self.info.get("captions", {}).get(self.caption_source.currentData(), {})
         pairs = [(f"{name} ({code})" if name != code else code, code) for code, name in sorted(languages.items(), key=lambda pair: (pair[0] != "en", pair[0]))]
@@ -214,10 +209,20 @@ class VideoCard(QFrame):
         self.setObjectName("videoResult")
         self.url, self.info = url, None
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 18, 0, 18)
-        layout.setSpacing(18)
-        row = QHBoxLayout()
-        row.setSpacing(14)
+        layout.setContentsMargins(0, 12, 0, 12)
+        layout.setSpacing(8)
+        self.strip = QScrollArea()
+        self.strip.setFrameShape(QFrame.NoFrame)
+        self.strip.setWidgetResizable(True)
+        self.strip.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.strip.setFixedHeight(86)
+        row_body = QWidget()
+        row_body.setObjectName("resultRow")
+        self.strip.setWidget(row_body)
+        row_body.setAutoFillBackground(False)
+        row = QHBoxLayout(row_body)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(12)
         self.selected = QCheckBox()
         self.selected.setAccessibleName("Select video")
         self.selected.setEnabled(False)
@@ -225,10 +230,13 @@ class VideoCard(QFrame):
         row.addWidget(self.selected)
         self.thumbnail = label("", "muted")
         self.thumbnail.setObjectName("thumbnail")
-        self.thumbnail.setFixedSize(128, 72)
+        self.thumbnail.setFixedSize(96, 54)
         self.thumbnail.setAlignment(Qt.AlignCenter)
         row.addWidget(self.thumbnail)
-        details = QVBoxLayout()
+        details_widget = QWidget()
+        details_widget.setMinimumWidth(115)
+        details = QVBoxLayout(details_widget)
+        details.setContentsMargins(0, 0, 0, 0)
         details.setSpacing(5)
         self.title = label("Inspecting…", "cardTitle")
         self.title.setMinimumWidth(0)
@@ -237,18 +245,17 @@ class VideoCard(QFrame):
         self.meta.setTextInteractionFlags(Qt.TextSelectableByMouse)
         details.addWidget(self.title)
         details.addWidget(self.meta)
-        row.addLayout(details, 1)
-        layout.addLayout(row)
+        row.addWidget(details_widget, 1)
         self.options_panel = ResultOptions(queue)
         self.options_panel.hide()
-        layout.addWidget(self.options_panel)
-        actions = QHBoxLayout()
-        self.status = label("", "muted")
-        actions.addWidget(self.status, 1)
+        row.addWidget(self.options_panel)
         self.download = button("Download", lambda: self.download_requested.emit(self.url), True)
         self.download.hide()
-        actions.addWidget(self.download)
-        layout.addLayout(actions)
+        row.addWidget(self.download)
+        layout.addWidget(self.strip)
+        self.status = label("", "muted")
+        self.status.hide()
+        layout.addWidget(self.status)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._source_menu)
 
@@ -262,27 +269,29 @@ class VideoCard(QFrame):
         self.title.setText(info.get("title", "Unavailable") if info else "Unavailable")
         if not info:
             self.status.setText(error)
+            self.status.show()
             return
-        self.meta.setText(" · ".join(str(value) for value in (info.get("creator"), info.get("site"), duration(info.get("duration"))) if value))
+        self.meta.setText(" · ".join(str(value) for value in ("LIVE" if info.get("live") else None, info.get("creator"), info.get("site"), duration(info.get("duration"))) if value))
         self.options_panel.set_info(info)
         self.options_panel.show()
         self.selected.setAccessibleName("Select " + info["title"])
         self.selected.setEnabled(True)
         self.selected.setChecked(True)
         self.download.show()
+        self.download.setText("Record" if info.get("live") else "Download")
         self.status.setText("")
         try:
             data = base64.b64decode(info.get("thumbnail_data", ""))
             pixmap = QPixmap()
             if data and pixmap.loadFromData(data):
-                self.thumbnail.setPixmap(pixmap.scaled(128, 72, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.thumbnail.setPixmap(pixmap.scaled(96, 54, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         except ValueError:
             pass
 
 
 class SearchPage(CenteredPage):
     def __init__(self, queue, parent=None):
-        super().__init__(0.65, parent)
+        super().__init__(0.65, parent, breakpoint=1100)
         self.queue, self.inspector = queue, Inspector(self)
         self.cards = {}
         self.current_input = True
@@ -381,20 +390,22 @@ class SearchPage(CenteredPage):
             try:
                 self.queue.submit(card.info, card.options_panel.options())
                 card.status.setText("Queued")
+                card.status.show()
                 queued += 1
             except (OSError, ValueError) as exc:
                 card.status.setText(str(exc))
+                card.status.show()
         if queued:
-            self.show_notice(f"Added to Downloaded · {queued}")
+            self.show_notice(f"Queued · {queued}")
 
 
 class DownloadTable(QTableWidget):
     menu_requested = Signal(str, QPoint)
 
     def __init__(self):
-        super().__init__(0, 6)
+        super().__init__(0, 7)
         self.setObjectName("downloadsTable")
-        self.setHorizontalHeaderLabels(["Name", "Format", "Quality", "Source", "Size", "Progress"])
+        self.setHorizontalHeaderLabels(["Name", "Type", "Format", "Quality", "Source", "Size", "Progress"])
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -403,13 +414,13 @@ class DownloadTable(QTableWidget):
         self.setFrameShape(QFrame.NoFrame)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.verticalHeader().hide()
-        self.verticalHeader().setDefaultSectionSize(64)
+        self.verticalHeader().setDefaultSectionSize(42)
         header = self.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         header.setMinimumSectionSize(70)
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         self.setColumnWidth(0, 180)
-        for column, width in ((1, 110), (2, 88), (3, 78), (4, 88), (5, 170)):
+        for column, width in ((1, 72), (2, 78), (3, 86), (4, 72), (5, 84), (6, 160)):
             header.setSectionResizeMode(column, QHeaderView.Fixed)
             self.setColumnWidth(column, width)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -439,11 +450,11 @@ class DownloadTable(QTableWidget):
 
     def fit_height(self):
         scrollbar = self.horizontalScrollBar().sizeHint().height() if self.horizontalHeader().length() > self.viewport().width() else 0
-        self.setFixedHeight(self.horizontalHeader().height() + self.rowCount() * 64 + scrollbar + 2)
+        self.setFixedHeight(self.horizontalHeader().height() + self.rowCount() * 42 + scrollbar + 2)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.setColumnWidth(0, max(180, self.viewport().width() - sum(self.columnWidth(c) for c in range(1, 6))))
+        self.setColumnWidth(0, max(180, self.viewport().width() - sum(self.columnWidth(c) for c in range(1, 7))))
         self.fit_height()
 
 
@@ -489,8 +500,8 @@ class DownloadedPage(CenteredPage):
             progress_widget = QWidget()
             progress_widget.setAttribute(Qt.WA_TransparentForMouseEvents)
             progress_layout = QVBoxLayout(progress_widget)
-            progress_layout.setContentsMargins(8, 9, 8, 9)
-            progress_layout.setSpacing(6)
+            progress_layout.setContentsMargins(8, 4, 8, 4)
+            progress_layout.setSpacing(3)
             state = label("", "muted")
             state.setWordWrap(False)
             progress = QProgressBar()
@@ -499,7 +510,7 @@ class DownloadedPage(CenteredPage):
             progress_layout.addWidget(state)
             progress_layout.addWidget(progress)
             progress_widget.state, progress_widget.bar = state, progress
-            table.setCellWidget(row, 5, progress_widget)
+            table.setCellWidget(row, 6, progress_widget)
         options = job["options"]
         kind, quality = options["kind"], options.get("quality", "best")
         if kind == "transcript":
@@ -509,16 +520,18 @@ class DownloadedPage(CenteredPage):
         else:
             quality = "Source" if options["format"] in ("flac", "wav") else "Best"
         source = "Torrent" if job.get("source") == "torrent" or job["url"].startswith("magnet:") else "Link"
-        size = job.get("size") if job["status"] == "completed" else job.get("total_bytes") or job.get("downloaded_bytes")
-        values = [job.get("title", job["url"]), f"{'Text' if kind == 'transcript' else kind.title()} · {options['format'].upper()}", quality, source, file_size(size)]
+        size = job.get("size") if job["status"] == "completed" or job.get("live") else job.get("total_bytes") or job.get("downloaded_bytes")
+        values = [job.get("title", job["url"]), 'Text' if kind == 'transcript' else kind.title(), options['format'].upper(), quality, source, file_size(size)]
         for column, value in enumerate(values):
             table.item(row, column).setText(value)
         table.item(row, 0).setToolTip(job.get("error") or values[0])
-        table.item(row, 3).setToolTip(job["url"])
-        table.item(row, 4).setToolTip("Final file size" if job["status"] == "completed" else "Current stream size; final output may differ")
-        widget = table.cellWidget(row, 5)
+        table.item(row, 4).setToolTip(job["url"])
+        table.item(row, 5).setToolTip("Final file size" if job["status"] == "completed" else "Current stream size; final output may differ")
+        widget = table.cellWidget(row, 6)
         percent, status = job.get("percent"), job["status"]
         state = status.title()
+        if status == "recording":
+            state = f"LIVE · {duration(job.get('elapsed', 0))}"
         if status == "downloading" and percent is not None:
             state = f"{round(percent)}%"
             if job.get("speed"):
@@ -558,8 +571,15 @@ class DownloadedPage(CenteredPage):
             action = menu.addAction("Show in folder", lambda: self._open(files[0], True))
             action.setEnabled(bool(files))
         elif job["status"] in ACTIVE:
-            action = menu.addAction("Cancel", lambda: self.queue.cancel(job_id))
-            action.setEnabled(job["status"] != "cancelling")
+            if not job.get("live") and job["status"] in ("queued", "starting", "downloading"):
+                menu.addAction("Pause", lambda: self.queue.pause(job_id))
+            action = menu.addAction("Stop", lambda: self.queue.stop_job(job_id))
+            action.setEnabled(job["status"] not in ("pausing", "stopping", "cancelling"))
+        elif job["status"] == "paused":
+            menu.addAction("Resume", lambda: self.queue.resume(job_id))
+            menu.addAction("Stop", lambda: self.queue.stop_job(job_id))
+        elif job["status"] == "stopped":
+            menu.addAction("Record again" if job.get("live") else "Resume", lambda: self.queue.retry(job_id))
         elif job["status"] in ("failed", "cancelled", "interrupted"):
             menu.addAction("Retry", lambda: self.queue.retry(job_id))
         return menu

@@ -1,6 +1,7 @@
 """Isolated yt-dlp process: structured messages allow cancellation of FFmpeg too."""
 import json
 import sys
+from pathlib import Path
 
 from .video_backend import inspect_video, perform_download
 
@@ -18,7 +19,10 @@ def main():
         if request["action"] == "inspect":
             result = inspect_video(request["url"])
         else:
-            result = perform_download(request, emit)
+            class StopRequest:
+                def is_set(self):
+                    return bool(request.get("control_file") and Path(request["control_file"]).exists())
+            result = perform_download(request, emit, StopRequest())
         emit("result", result)
         return 0
     except Exception as exc:
