@@ -136,7 +136,7 @@ def main(argv=None):
     from .ui.shell import ShellWindow
     if sys.platform == "win32":
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("KaZaA.Start1")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("KaZaA.Desktop.Start1")
     app = QApplication(sys.argv[:1])
     app.setApplicationName("KaZaA")
     app.setOrganizationName("KaZaA")

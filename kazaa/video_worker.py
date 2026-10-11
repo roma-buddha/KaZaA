@@ -16,12 +16,15 @@ def main():
         stream.reconfigure(encoding="utf-8")
     try:
         request = json.load(sys.stdin)
-        if request["action"] == "inspect":
+        class StopRequest:
+            def is_set(self):
+                return bool(request.get("control_file") and Path(request["control_file"]).exists())
+        if request.get("source") == "torrent":
+            from .torrent_backend import inspect_torrent, download_torrent
+            result = inspect_torrent(request, StopRequest()) if request["action"] == "inspect" else download_torrent(request, emit, StopRequest())
+        elif request["action"] == "inspect":
             result = inspect_video(request["url"])
         else:
-            class StopRequest:
-                def is_set(self):
-                    return bool(request.get("control_file") and Path(request["control_file"]).exists())
             result = perform_download(request, emit, StopRequest())
         emit("result", result)
         return 0

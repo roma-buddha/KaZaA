@@ -11,9 +11,10 @@ import threading
 import tempfile
 import uuid
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QFile, QObject, QThread, Signal
 
-from .video_backend import DownloadOptions, validate_url
+from .video_backend import DownloadOptions, link_key, validate_url
+from .sources import normalize_source, output_paths, validate_selection
 
 ACTIVE = {"queued", "starting", "downloading", "recording", "processing", "cancelling", "pausing", "stopping"}
 
@@ -45,7 +46,9 @@ class ProcessWorker(QThread):
             process = self._process
             if process and process.poll() is None:
                 self.cancel()
-        timer = threading.Timer(15, deadline)
+        # Live captures may need ten seconds to stop, then a bounded MP4 remux
+        # and validation. Keep the worker alive through that finalization.
+        timer = threading.Timer(150 if self.request.get("live") else 15, deadline)
         timer.daemon = True
         timer.start()
 
@@ -124,12 +127,13 @@ class Inspector(QObject):
     item_ready = Signal(int, str, dict, str)
     busy_changed = Signal(bool)
 
-    def __init__(self, parent=None, worker_factory=ProcessWorker):
+    def __init__(self, parent=None, worker_factory=ProcessWorker, cache_dir=None):
         super().__init__(parent)
         self.worker_factory = worker_factory
         self.generation = 0
         self.pending = []
         self.workers = {}
+        self.cache_dir = str(cache_dir or Path(tempfile.gettempdir(), "kazaa-torrent-cache"))
 
     def inspect(self, urls):
         self.generation += 1
@@ -140,10 +144,17 @@ class Inspector(QObject):
         self._pump()
         return self.generation
 
+    def append(self, urls):
+        self.pending.extend((self.generation, url) for url in urls)
+        self.busy_changed.emit(bool(self.pending or self.workers))
+        self._pump()
+
     def _pump(self):
         while self.pending and len(self.workers) < 2:
             generation, url = self.pending.pop(0)
-            worker = self.worker_factory({"action": "inspect", "url": url}, self)
+            _, source = normalize_source(url)
+            worker = self.worker_factory({"action": "inspect", "url": url, "source": source,
+                                          "cache_dir": self.cache_dir}, self)
             self.workers[worker] = generation
             worker.result.connect(lambda result, g=generation, u=url: self._deliver(g, u, result, ""))
             worker.error.connect(lambda error, g=generation, u=url: self._deliver(g, u, {}, error))
@@ -170,6 +181,7 @@ class Inspector(QObject):
 
 class VideoQueue(QObject):
     changed = Signal(str, dict)
+    removed = Signal(str)
     notice = Signal(str)
 
     def __init__(self, path, parent=None, worker_factory=ProcessWorker):
@@ -195,13 +207,19 @@ class VideoQueue(QObject):
                 if not isinstance(job["options"], dict) or not isinstance(job["id"], str):
                     continue
                 try:
-                    validate_url(job["url"])
-                    DownloadOptions.from_dict(job["options"])
-                except (ValueError, TypeError):
+                    if job.get("source") == "torrent":
+                        normalize_source(job["url"])
+                        validate_selection(job["torrent"]["manifest"], job["options"]["selected_files"])
+                        output_paths(job["torrent"]["manifest"], job["options"]["folder"])
+                    else:
+                        validate_url(job["url"])
+                        DownloadOptions.from_dict(job["options"])
+                except (ValueError, TypeError, KeyError, OSError):
                     continue
-                if job["status"] in ACTIVE:
-                    job["status"] = "interrupted"
-                    job["error"] = "Interrupted when the app closed. Retry to continue."
+                if job["status"] in ("pausing", "stopping", "cancelling"):
+                    job["status"] = {"pausing": "paused", "stopping": "stopped", "cancelling": "cancelled"}[job["status"]]
+                elif job["status"] in ACTIVE | {"interrupted"}:
+                    job.update(status="queued", error="", speed=None, eta=None)
                 self.jobs[job["id"]] = job
         except (OSError, ValueError, TypeError):
             pass
@@ -214,20 +232,30 @@ class VideoQueue(QObject):
                                             ensure_ascii=False, indent=2), encoding="utf-8")
             temporary.replace(self.path)
             self._last_save = time.monotonic()
+            return True
         except OSError as exc:
             self.notice.emit(f"Could not save download history: {exc}")
+            return False
+
+    def start_pending(self):
+        self._pump()
 
     def set_options(self, options):
         self.options = copy.deepcopy(options)
         self.save()
 
     def submit(self, info, options):
+        if info.get("source") == "torrent":
+            return self.submit_torrent(info, options)
         options.validate(info)
         url = validate_url(info["url"])
+        key = link_key(url)
         snapshot = options.to_dict()
-        if any(job["url"] == url and job["options"] == snapshot and job["status"] in ACTIVE | {"paused"}
-               for job in self.jobs.values()):
-            raise ValueError("This download is already in the queue.")
+        if any(job.get("source") != "torrent" and link_key(job["url"]) == key and
+               job["options"].get("kind", "video") == options.kind and
+               job["options"].get("format", "mp4") == options.format for job in self.jobs.values()):
+            raise ValueError(f"This link is already in Downloads as {options.kind.title()} {options.format.upper()}. "
+                             "Choose a different type or format, or use the existing entry.")
         job_id = uuid.uuid4().hex
         self.jobs[job_id] = {"id": job_id, "url": url, "title": info["title"],
                             "options": snapshot, "source": "link", "live": bool(info.get("live")), "status": "queued", "percent": None,
@@ -235,6 +263,35 @@ class VideoQueue(QObject):
         self._changed(job_id)
         self._pump()
         return job_id
+
+    def torrent_match(self, hashes):
+        identities = set(hashes)
+        return next((job["id"] for job in self.jobs.values() if job.get("source") == "torrent"
+                     and identities & set(job["torrent"]["hashes"])), None)
+
+    def submit_torrent(self, info, options):
+        if self.torrent_match(info["hashes"]):
+            raise ValueError("This torrent is already in Downloads. Choose files in its existing entry.")
+        selected = validate_selection(info["manifest"], options["selected_files"])
+        output_paths(info["manifest"], options["folder"])
+        job_id = uuid.uuid4().hex
+        torrent = {key: copy.deepcopy(info[key]) for key in ("hashes", "manifest", "metadata_file")}
+        torrent["resume_file"] = str(self.path.parent / "torrent-cache" / (job_id + ".resume"))
+        self.jobs[job_id] = {"id": job_id, "url": info["url"], "title": info["title"], "source": "torrent",
+                            "torrent": torrent, "options": {"kind": "torrent", "folder": options["folder"], "selected_files": selected},
+                            "status": "queued", "percent": None, "files": [], "created": time.time(), "error": ""}
+        self._changed(job_id)
+        self._pump()
+        return job_id
+
+    def select_torrent_files(self, job_id, selected):
+        job = self.jobs[job_id]
+        if job.get("source") != "torrent" or job["status"] in ACTIVE or job_id in self.workers:
+            raise ValueError("Pause or stop this torrent before choosing files.")
+        job["options"]["selected_files"] = validate_selection(job["torrent"]["manifest"], selected)
+        job.update(status="queued", error="", percent=None, completed=None, speed=None, eta=None, files_deleted=False)
+        self._changed(job_id)
+        self._pump()
 
     def _changed(self, job_id, persist=True):
         self.changed.emit(job_id, copy.deepcopy(self.jobs[job_id]))
@@ -250,8 +307,11 @@ class VideoQueue(QObject):
             if job["status"] != "queued":
                 continue
             job_id = job["id"]
-            worker = self.worker_factory({"action": "download", "id": job_id,
-                                          "url": job["url"], "live": job.get("live", False), "options": copy.deepcopy(job["options"])}, self)
+            request = {"action": "download", "id": job_id, "source": job.get("source", "link"),
+                       "url": job["url"], "live": job.get("live", False), "options": copy.deepcopy(job["options"])}
+            if job.get("source") == "torrent":
+                request.update(torrent=copy.deepcopy(job["torrent"]), owned_files=list(job.get("files", [])))
+            worker = self.worker_factory(request, self)
             self.workers[job_id] = worker
             job["status"] = "starting"
             worker.progress.connect(lambda data, i=job_id: self._progress(i, data))
@@ -262,30 +322,39 @@ class VideoQueue(QObject):
             worker.start()
 
     def _progress(self, job_id, data):
-        if self._closing or self.jobs[job_id]["status"] in ("cancelling", "pausing", "stopping"):
+        if self.jobs[job_id].get("source") == "torrent" and "files" in data:
+            self.jobs[job_id]["files"] = data["files"]
+        finishing_live = (self.jobs[job_id].get("live") and data.get("status") == "processing"
+                          and self.jobs[job_id]["status"] == "stopping")
+        if self._closing or (self.jobs[job_id]["status"] in ("cancelling", "pausing", "stopping") and not finishing_live):
             return
         self.jobs[job_id].update(data)
         self._changed(job_id, time.monotonic() - self._last_save > 1)
 
     def _done(self, job_id, result):
         job = self.jobs[job_id]
-        if job["status"] in ("cancelling", "pausing") or (job["status"] == "stopping" and not job.get("live")):
+        if job["status"] in ("cancelling", "pausing") or (job["status"] == "stopping" and not job.get("live")) or (self._closing and job["status"] in ("paused", "stopped", "cancelled")):
             self._error(job_id, "Cancelled")
             return
-        if not result.get("files") or not all(Path(path).is_file() for path in result["files"]):
+        if not result.get("files") or (job.get("source") != "torrent" and not all(Path(path).is_file() for path in result["files"])):
             self._error(job_id, "No output files were produced.")
             return
+        if job.get("source") == "torrent":
+            paths = output_paths(job["torrent"]["manifest"], job["options"]["folder"])
+            if not all(Path(paths[i]).is_file() for i in job["options"]["selected_files"]):
+                self._error(job_id, "The selected torrent files were not produced.")
+                return
         job.update(result)
-        job.update(status="completed", percent=100, error="")
+        job.update(status="completed", percent=100, error="", completed=time.time(), speed=None, eta=None)
         self._changed(job_id)
 
     def _error(self, job_id, error):
         job = self.jobs[job_id]
         cancelled = error == "Cancelled" or job["status"] == "cancelling"
-        status = "interrupted" if self._closing else "paused" if job["status"] == "pausing" else "stopped" if job["status"] == "stopping" else "cancelled" if cancelled else "failed"
+        status = (job["status"] if job["status"] in ("paused", "stopped", "cancelled") else "interrupted") if self._closing else "paused" if job["status"] == "pausing" else "stopped" if job["status"] == "stopping" else "cancelled" if cancelled else "failed"
         if job.get("live") and error == "Cancelled" and status == "stopped":
             error = "Recording interrupted; any partial recording was kept."
-        job.update(status=status, error="Interrupted when the app closed. Retry to continue." if self._closing else "" if status in ("paused", "stopped") and error == "Cancelled" else error,
+        job.update(status=status, error="" if self._closing or (status in ("paused", "stopped") and error == "Cancelled") else error,
                    speed=None, eta=None)
         self._changed(job_id)
 
@@ -299,7 +368,8 @@ class VideoQueue(QObject):
         job = self.jobs[job_id]
         if job_id in self.workers:
             job["status"] = "cancelling"
-            self.workers[job_id].cancel()
+            worker = self.workers[job_id]
+            worker.stop() if job.get("source") == "torrent" else worker.cancel()
         else:
             job.update(status="cancelled", error="Cancelled")
         self._changed(job_id)
@@ -307,10 +377,46 @@ class VideoQueue(QObject):
     def retry(self, job_id):
         if job_id in self.workers or self.jobs[job_id]["status"] not in ("failed", "cancelled", "interrupted", "paused", "stopped"):
             return
-        self.jobs[job_id].update(status="queued", error="", percent=None, files=[],
-                                 total_bytes=None, downloaded_bytes=None, speed=None, eta=None)
+        job = self.jobs[job_id]
+        job.update(status="queued", error="", percent=None, files=job.get("files", []) if job.get("source") == "torrent" else [],
+                                 total_bytes=None, downloaded_bytes=None, speed=None, eta=None,
+                                 completed=None, actual_quality="", files_deleted=False)
         self._changed(job_id)
         self._pump()
+
+    def delete(self, job_id, mode="entry"):
+        """Delete an inactive history entry and/or its recorded output files."""
+        if mode not in ("entry", "file", "both"):
+            raise ValueError("Choose whether to remove the entry, the file, or both.")
+        job = self.jobs[job_id]
+        if job_id in self.workers or job["status"] in ACTIVE:
+            raise ValueError("Stop this download or recording before deleting it.")
+        if mode in ("file", "both"):
+            paths = list(dict.fromkeys(job.get("files", [])))
+            if job.get("source") == "torrent":
+                allowed = set(output_paths(job["torrent"]["manifest"], job["options"]["folder"]).values())
+                if any(str(Path(path).resolve()) not in allowed for path in paths):
+                    raise ValueError("Only this torrent's output files can be deleted.")
+            # Preflight every output before recycling anything; never recycle directories.
+            for path in paths:
+                if Path(path).is_dir():
+                    raise ValueError("Only this entry's output files can be deleted.")
+            for path in paths:
+                if Path(path).exists() and not QFile.moveToTrash(path):
+                    raise OSError("Could not move the file to the Recycle Bin. The entry was kept; "
+                                  "any files already moved remain in the Recycle Bin.")
+            job["files_deleted"] = True
+        if mode in ("entry", "both"):
+            self.jobs.pop(job_id)
+            if not self.save():
+                self.jobs[job_id] = job
+                self._changed(job_id, persist=False)
+                raise OSError("Could not save the removal. The entry was kept.")
+            self.removed.emit(job_id)
+        else:
+            self._changed(job_id, persist=False)
+            if not self.save():
+                raise OSError("The file was deleted, but its updated history could not be saved.")
 
     def pause(self, job_id):
         job = self.jobs[job_id]
@@ -318,7 +424,8 @@ class VideoQueue(QObject):
             return
         if job_id in self.workers:
             job["status"] = "pausing"
-            self.workers[job_id].cancel()
+            worker = self.workers[job_id]
+            worker.stop() if job.get("source") == "torrent" else worker.cancel()
         else:
             job["status"] = "paused"
         self._changed(job_id)
@@ -334,17 +441,19 @@ class VideoQueue(QObject):
         if job_id in self.workers:
             job["status"] = "stopping"
             worker = self.workers[job_id]
-            worker.stop() if job.get("live") else worker.cancel()
+            worker.stop() if job.get("live") or job.get("source") == "torrent" else worker.cancel()
         else:
             job.update(status="stopped", error="")
         self._changed(job_id)
 
     def stop(self):
+        if self._closing:
+            return
         self._closing = True
         for job_id, worker in self.workers.items():
             job = self.jobs[job_id]
-            job["status"] = "stopping" if job.get("live") else "interrupted"
-            worker.stop() if job.get("live") else worker.cancel()
+            job["status"] = {"pausing": "paused", "stopping": "stopped", "cancelling": "cancelled"}.get(job["status"], "interrupted")
+            worker.stop() if job.get("live") or job.get("source") == "torrent" else worker.cancel()
         for job in self.jobs.values():
             if job["status"] in ACTIVE:
                 job["status"] = "interrupted"

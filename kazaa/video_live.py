@@ -1,11 +1,13 @@
 """Live video/audio recording with a graceful, bounded FFmpeg stop."""
 from collections import deque
+import json
 from pathlib import Path
+import shutil
 import subprocess
 import threading
 import time
 
-from .video_backend import VIDEO_FORMATS, find_ffmpeg
+from .video_backend import VIDEO_FORMATS, find_ffmpeg, output_quality, video_quality
 
 
 def select_streams(info, options):
@@ -44,7 +46,9 @@ def recording_command(info, options, partial):
         if options.format == "webm":
             command += ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "5", "-c:a", "libopus"]
         else:
-            command += ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac"]
+            command += ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                        "-forced-idr", "1", "-flags", "+cgop"]
+        command += ["-force_key_frames", "expr:gte(t,n_forced*2)"]
     else:
         codecs = {"mp3": "libmp3lame", "m4a": "aac", "flac": "flac", "wav": "pcm_s16le", "ogg": "libvorbis"}
         command += ["-map", "0:a:0", "-vn", "-c:a", codecs[options.format]]
@@ -63,6 +67,49 @@ def recording_command(info, options, partial):
     return command
 
 
+def finalize_recording(partial, output, options):
+    """Publish a conventional indexed MP4/M4A, keeping the capture on failure."""
+    if options.format not in ("mp4", "m4a"):
+        partial.replace(output)
+        return
+    temporary = output.with_name(output.name + ".finalizing")
+    ffmpeg = find_ffmpeg()
+    ffprobe = Path(ffmpeg).with_name("ffprobe.exe" if Path(ffmpeg).suffix.lower() == ".exe" else "ffprobe")
+    probe = str(ffprobe) if ffprobe.is_file() else shutil.which("ffprobe")
+    try:
+        if not probe:
+            raise ValueError("FFprobe is required to validate the finished recording.")
+        result = subprocess.run([ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-xerror",
+            "-i", str(partial), "-map", "0", "-c", "copy", "-movflags", "+faststart",
+            "-f", "mp4" if options.format == "mp4" else "ipod", str(temporary)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if result.returncode:
+            raise ValueError(result.stderr.strip()[-1000:] or "FFmpeg could not finalize the recording.")
+        result = subprocess.run([probe, "-v", "error", "-show_entries", "stream=codec_type:format=duration",
+            "-of", "json", str(temporary)], capture_output=True, text=True, timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if result.returncode:
+            raise ValueError("The finished recording could not be read.")
+        metadata = json.loads(result.stdout)
+        if not temporary.is_file() or not temporary.stat().st_size or float(metadata.get("format", {}).get("duration", 0)) <= 0:
+            raise ValueError("The finished recording contains no media.")
+        if not any(stream.get("codec_type") == options.kind for stream in metadata.get("streams", [])):
+            raise ValueError("The finished recording is missing its media stream.")
+        temporary.replace(output)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise ValueError(f"Recording finalization failed; the partial recording was kept at {partial}: {exc}") from exc
+    # The published file is already validated; cleanup must not turn it into a failure.
+    try:
+        partial.unlink()
+    except OSError:
+        pass
+
+
 def record_live(info, options, filename, emit, stop_event=None):
     stop_event = stop_event or threading.Event()
     if stop_event.is_set():
@@ -75,6 +122,7 @@ def record_live(info, options, filename, emit, stop_event=None):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     state = {"elapsed": 0.0}
+    quality = video_quality(select_streams(info, options)[0]) if options.kind == "video" else ""
     errors = deque(maxlen=6)
 
     def read_progress():
@@ -107,7 +155,8 @@ def record_live(info, options, filename, emit, stop_event=None):
                 process.kill()
                 raise ValueError("The stream did not stop cleanly; the partial recording was kept.")
             emit("progress", {"status": "recording", "live": True, "percent": None,
-                "elapsed": state["elapsed"], "size": partial.stat().st_size if partial.exists() else 0})
+                "elapsed": state["elapsed"], "size": partial.stat().st_size if partial.exists() else 0,
+                "actual_quality": quality})
             try:
                 process.wait(timeout=0.4)
             except subprocess.TimeoutExpired:
@@ -118,9 +167,13 @@ def record_live(info, options, filename, emit, stop_event=None):
             raise ValueError("Live recording failed: " + (" · ".join(errors) or "FFmpeg stopped unexpectedly."))
         if not partial.exists() or partial.stat().st_size == 0 or state["elapsed"] <= 0:
             raise ValueError("The stream ended before any media was recorded.")
-        partial.replace(output)
+        emit("progress", {"status": "processing", "live": True, "percent": None,
+                          "elapsed": state["elapsed"], "size": partial.stat().st_size,
+                          "actual_quality": quality})
+        finalize_recording(partial, output, options)
         return {"files": [str(output.resolve())], "title": info.get("title") or "Live stream",
-                "size": output.stat().st_size, "live": True, "elapsed": state["elapsed"], "stopped": stop_event.is_set()}
+                "size": output.stat().st_size, "live": True, "elapsed": state["elapsed"], "stopped": stop_event.is_set(),
+                "actual_quality": output_quality(output, options, select_streams(info, options)[0])}
     finally:
         if process.poll() is None:
             process.kill()

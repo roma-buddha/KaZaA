@@ -8,7 +8,7 @@ The integrated header uses the workspace background, a text-only KaZaA wordmark,
 and a compact row of sidebar, theme and appearance controls. Minimize, maximize,
 restore and close sit at the right. Windows dragging, edge resizing and snapping
 use native frame handling without a separate system title bar.
-The sidebar has two pages: **Search** and **Download**.
+The sidebar has two pages: **Search** and **Downloads**.
 Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
 work. The icon-only gear beside the wordmark opens theme and download-folder settings.
 The sidebar toggle has no persistent selection outline. The rounded K-and-orbit
@@ -20,7 +20,7 @@ python -m venv .venv
 .\kazaa.bat
 ```
 
-The app uses PySide6 Essentials and yt-dlp. Video/audio exports need FFmpeg;
+The app uses PySide6 Essentials, yt-dlp and libtorrent. Video/audio exports need FFmpeg;
 install it on PATH or use the existing bundled tools. YouTube extraction also
 uses Node.js 22 or newer on PATH and the solver included by `yt-dlp[default]`.
 Caption-only exports do not require FFmpeg. There is no local server; network
@@ -36,6 +36,7 @@ Paste one or several video links into Search, then click **Inspect** or press En
 Shift+Enter adds another line. Each result shows its title, thumbnail, creator,
 and duration. YouTube and other yt-dlp-supported video sites
 use the same workflow; individual site restrictions can still prevent extraction.
+New results default to Video, regardless of the previous export type.
 After inspection, choose separately for each result using the compact controls
 and Download button in a single row to the right of the preview:
 
@@ -47,19 +48,74 @@ and Download button in a single row to the right of the preview:
   do not include captions. Set the remembered **Download folder** in the gear Settings.
 
 Click a result's **Download**, or select results and choose **Download selected**.
-Two jobs run at a time; each keeps the options selected when it was queued.
+Successfully queued results and their input links leave Search and appear in Downloads immediately,
+without a queued notification;
+failed submissions stay in Search with their error. Two jobs run at a time;
+each keeps the options selected when it was queued.
+Links already in Downloads can be submitted with a different type or output format.
+The same link, type and format cannot be submitted twice, even with a different
+quality or folder, or after restarting the app. Resume and Retry use the
+existing entry. Removing the entry from history allows submitting that link again.
 Search uses a transparent input with no enclosing panel, centered at 65% of the
-main workspace width. Download uses centered tables at 70%, split into
+main workspace width. Downloads uses centered tables at 94%, split into
 **In progress** and **Downloaded**, with name, separate type and format columns, quality,
-source (**Link** or **Torrent**), size and progress. Smaller windows use more
+source (**Link** or **Torrent**), size, progress, speed, Added and Downloaded.
+Quality shows the actual output resolution or audio bitrate, with sample rate and
+bit depth for lossless audio when available. Unknown quality and dates in older
+history appear as a dash. Dates use local time in DD.MM.YY form, without a time;
+Downloaded is set only after
+successful completion. Smaller windows use more
 of the available width, with horizontal table scrolling when necessary.
 Right-click a row for **Pause**, **Resume**, **Stop**, **Retry**, **Open file** or **Show in folder**,
-as applicable; the keyboard menu key and Shift+F10 also work. Speed is shown
-with progress, ETA and errors are available on hover. History survives restarting;
-interrupted jobs wait for an explicit retry. Unavailable options produce an error.
-This rebuild accepts individual video and live-stream URLs. Playlist-only URLs
-and torrents/magnet links are not enabled. Keyword search and torrent support
-remain future work.
+as applicable; the keyboard menu key and Shift+F10 also work. Click a row to select
+only it, or Ctrl-click to add or remove rows from the highlighted selection.
+Double-click a downloaded row to open its file in the default app for its format;
+entries with several files offer a file picker menu. Right-click a selected row
+to delete the selection together.
+Escape clears selection. **Delete…** offers entry only, file only, or both.
+Files go to the Recycle Bin; active jobs must be
+stopped first. Deleting only the file keeps its history with a File deleted label.
+Speed and ETA have separate columns. Hover over Source to see the original link
+or torrent seed/peer counts and health. History survives restarting; unfinished
+transfers restart automatically, while manually paused or stopped jobs stay inactive.
+Unavailable options produce an error.
+This rebuild accepts individual video/live-stream URLs, torrent magnets, local
+`.torrent` files and HTTP(S) torrent-file links. Playlist-only URLs and keyword
+search remain future work.
+
+### Torrents
+
+Paste a magnet or drop one or several `.torrent` files into Search, then click
+**Inspect** or press Enter to fetch metadata. Adding a torrent does not start
+inspection or show a pending preview. Video links and torrents can
+share a batch; adding torrents preserves existing selections and inspections.
+Local paths containing spaces are accepted. Magnet inspection fetches metadata
+without downloading the payload; it times out after three minutes if no peers
+provide metadata. Torrent metadata is cached under the application profile.
+
+The preview expands to show the torrent's folder/file tree and sizes without an
+internal scrollbar. The first checkbox selects or deselects everything; individual
+file and folder checkboxes refine the selection. Padding
+files are hidden. Click Download to transfer only the selected files to Downloads;
+the preview and its input source then disappear from Search. Torrent contents keep
+their original folder layout under the download folder selected in Settings.
+
+Torrents use the same two-job queue and progress, speed and date columns as video
+downloads. Type and Source say Torrent; Format and Quality show a dash. Pause, Stop
+and normal app closure save resume data and keep partial files. After a restart,
+unfinished transfers resume automatically unless manually paused or stopped. Selected files define progress and
+completion; deselected files may require small boundary-piece data in an internal
+part file. Peer sharing is allowed during download, then stopped at completion.
+There is no seeding section, and qBittorrent is not required.
+
+Only one Downloads entry is created per torrent, even when it is supplied through
+different magnets or torrent files. Existing previews offer Open in Downloads.
+Pause or stop an active torrent before using Choose files… in its context menu;
+Download selected reuses that entry and its destination to fetch additional files.
+Files already downloaded are retained when deselected. Open file and Show in
+folder use recorded outputs; deletion only recycles this entry's files and leaves
+unrelated files in the same folder untouched. Unsafe paths and unsupported torrent
+symbolic links are rejected.
 
 ### Live streams
 
@@ -67,11 +123,15 @@ Paste a live-stream URL into the same input and inspect it. Detected live stream
 show **LIVE** and a **Record** action, with video or audio choices. Live video
 supports MP4/MKV/WebM; audio supports MP3/M4A/FLAC/WAV/OGG. Transcripts can be
 exported once the broadcast is available as a regular video.
-In Download, a recording shows elapsed time and the growing file size.
+Clicking **Record** also moves the result from Search to Downloads.
+In Downloads, a recording shows elapsed time and the growing file size.
 Right-click **Stop** to finalize and save it in the Downloaded group. Closing
 the app also requests a graceful recording stop. A forced interruption preserves
 the `.part` recording; MP4/M4A use fragmented output so recorded fragments remain
-recoverable. Retrying a live stream starts a new capture with a new filename.
+recoverable. Finished MP4/M4A recordings are remuxed without re-encoding into
+conventional indexed files. Live video uses keyframes approximately every two
+seconds for seeking. Finalization failures retain the partial capture.
+Retrying a live stream starts a new capture with a new filename.
 Regular downloads retain partial files during Pause/Stop and continue on Resume
 when the source supports byte-range requests. Paused jobs remain paused after
 restarting the app. Live recording offers Stop rather than Pause because a live
@@ -84,14 +144,20 @@ Focused shell checks: `.\.venv\Scripts\python.exe tools/test_shell.py`.
 Focused video checks: `.\.venv\Scripts\python.exe tools/test_video_workflow.py`.
 Theme previews: `.\.venv\Scripts\python.exe tools/preview_shell.py`.
 
-Create or repair the KaZaA desktop shortcut:
+Create or repair the KaZaA desktop and Start menu shortcuts:
 `powershell -ExecutionPolicy Bypass -File tools/install_shortcut.ps1`.
-An old VLoader desktop shortcut is backed up under `tools/out/shortcuts/`.
+The script creates a small Windows launcher with KaZaA product metadata, registers
+the exact Windows display name **KaZaA**, and refreshes matching Search-index entries.
+The desktop launcher is inside the Desktop's KaZaA folder; the Start Menu launcher
+is inside KaZaA Desktop. These fresh paths avoid stale capitalization cached for
+the original shortcut locations. Replaced shortcuts
+belonging to this checkout are backed up under `tools/out/shortcuts/`; separate
+legacy installations are preserved.
 
 If Codex holds the project folder open during a capitalization change, close
 Codex and KaZaA, then run `powershell -ExecutionPolicy Bypass -File
-"C:\Users\valer\Projects 2027\KazaA\tools\finalize_folder_name.ps1"`.
-The helper updates the folder spelling to `KaZaA` and repairs the desktop shortcut.
+"C:\Users\valer\Projects 2027\KaZaA\tools\finalize_folder_name.ps1"`.
+The helper updates the folder spelling to `KaZaA` and repairs both shortcuts.
 
 **A modern, dark-themed video downloader, converter & screen recorder for Windows —
 built entirely on open-source components (yt-dlp + ffmpeg + PySide6).**

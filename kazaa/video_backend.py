@@ -1,9 +1,11 @@
 """Video inspection and export, independent of the legacy media/torrent manager."""
 import base64
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import re
 from shutil import which
+import subprocess
 import sys
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -31,6 +33,10 @@ def validate_url(value):
     return value
 
 
+def link_key(value):
+    return urlunsplit(urlsplit(validate_url(value))._replace(fragment=""))
+
+
 def parse_links(text):
     entries, seen = [], set()
     for raw in re.split(r"\s+", text.strip()):
@@ -40,7 +46,7 @@ def parse_links(text):
             url, error = validate_url(raw), ""
         except ValueError as exc:
             url, error = raw, str(exc)
-        key = urlunsplit(urlsplit(url)._replace(fragment="")) if not error else url
+        key = link_key(url) if not error else url
         if key in seen:
             continue
         seen.add(key)
@@ -58,6 +64,45 @@ def find_ffmpeg():
             if (root / name).is_file():
                 return str(root / name)
     return which("ffmpeg")
+
+
+def video_quality(info):
+    """Resolution of the selected stream, rather than the requested preset."""
+    streams = [info, *(info.get("requested_formats") or [])]
+    height = next((stream.get("height") for stream in streams if stream.get("height")), None)
+    return f"{int(height)}p" if height else ""
+
+
+def output_quality(path, options, info=None):
+    """Inspect the final output, including bitrate changes from audio conversion."""
+    if options.kind == "transcript":
+        return ""
+    ffmpeg = find_ffmpeg()
+    sibling = Path(ffmpeg).with_name("ffprobe.exe" if sys.platform == "win32" else "ffprobe") if ffmpeg else None
+    probe = str(sibling) if sibling and sibling.is_file() else which("ffprobe")
+    if probe:
+        try:
+            result = subprocess.run([probe, "-v", "error", "-show_streams", "-of", "json", str(path)],
+                capture_output=True, text=True, encoding="utf-8", timeout=10, check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            streams = json.loads(result.stdout).get("streams", [])
+            stream = next((s for s in streams if s.get("codec_type") == options.kind), {})
+            if options.kind == "video" and stream.get("height"):
+                return video_quality(stream)
+            if options.kind == "audio":
+                if options.format in ("flac", "wav"):
+                    rate = int(stream.get("sample_rate") or 0)
+                    bits = int(stream.get("bits_per_raw_sample") or stream.get("bits_per_sample") or 0)
+                    parts = [f"{rate / 1000:g} kHz"] if rate else []
+                    if bits:
+                        parts.append(f"{bits}-bit")
+                    return " · ".join(parts)
+                bitrate = int(stream.get("bit_rate") or 0)
+                if bitrate:
+                    return f"{round(bitrate / 1000)} kbps"
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+            pass  # A missing probe must not turn a successful export into a failure.
+    return video_quality(info or {}) if options.kind == "video" else ""
 
 
 @dataclass(frozen=True)
@@ -208,10 +253,11 @@ def perform_download(request, emit, stop_event=None):
         percent = 100 * data.get("downloaded_bytes", 0) / total if total else None
         emit("progress", {"status": "downloading" if data.get("status") == "downloading" else "processing",
                           "percent": percent, "speed": data.get("speed"), "eta": data.get("eta"),
-                          "downloaded_bytes": data.get("downloaded_bytes"), "total_bytes": total})
+                          "downloaded_bytes": data.get("downloaded_bytes"), "total_bytes": total,
+                          **({"actual_quality": video_quality(data.get("info_dict") or {})} if options.kind == "video" else {})})
     moved = []
     def postprocess(data):
-        emit("progress", {"status": "processing", "percent": None})
+        emit("progress", {"status": "processing", "percent": None, "speed": None, "eta": None})
         filepath = data.get("info_dict", {}).get("filepath")
         if filepath:
             moved.append(filepath)
@@ -254,4 +300,5 @@ def perform_download(request, emit, stop_event=None):
             if output != source:
                 Path(source).unlink()  # Only this job's downloaded intermediate caption file.
         return {"files": files, "title": info.get("title") or url,
-                "size": sum(Path(path).stat().st_size for path in files)}
+                "size": sum(Path(path).stat().st_size for path in files),
+                "actual_quality": output_quality(files[0], options, info)}

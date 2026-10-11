@@ -2,9 +2,9 @@
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QButtonGroup, QDialog, QHBoxLayout, QLabel,
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QCursor, QIcon, QKeySequence, QShortcut
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QDialog, QHBoxLayout, QLabel,
                                QFileDialog, QLineEdit, QMessageBox, QPushButton,
                                QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
@@ -43,6 +43,7 @@ class SidebarSplitter(QSplitter):
 
 class AppearanceDialog(QDialog):
     theme_changed = Signal(str)
+    dismissed = Signal()
 
     def __init__(self, parent):
         super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
@@ -112,6 +113,10 @@ class AppearanceDialog(QDialog):
             self.folder.setText(selected)
             self._save_folder()
 
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.dismissed.emit()
+
     def sync(self, mode, colors):
         self.theme_buttons[mode].setChecked(True)
         for key, button in self.theme_buttons.items():
@@ -151,10 +156,10 @@ class ShellWindow(ShellFrame):
         self.splitter.addWidget(self.sidebar)
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(14, 22, 14, 24)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setSpacing(4)
         self.navigation_group = QButtonGroup(self)
         self.navigation_buttons = {}
-        for key, title in (("search", "Search"), ("downloaded", "Download")):
+        for key, title in (("search", "Search"), ("downloaded", "Downloads")):
             button = QPushButton(title)
             button.setProperty("role", "nav")
             button.setCheckable(True)
@@ -181,10 +186,12 @@ class ShellWindow(ShellFrame):
         self.download_queue = VideoQueue(self.preferences_path.parent / "video-downloads.json", self)
         self.search_page = SearchPage(self.download_queue)
         self.downloaded_page = DownloadedPage(self.download_queue)
+        self.search_page.open_download.connect(self._open_download)
         self.canvas.addWidget(self.search_page)
         self.canvas.addWidget(self.downloaded_page)
         self.appearance = AppearanceDialog(self)
         self.appearance.theme_changed.connect(self.set_theme)
+        self.appearance.dismissed.connect(self._settings_dismissed)
 
         self.splitter.setStretchFactor(1, 1)
         width = self.preferences["sidebar_width"]
@@ -201,6 +208,7 @@ class ShellWindow(ShellFrame):
         focus_links = QShortcut(QKeySequence("Ctrl+L"), self)
         focus_links.activated.connect(self._focus_links)
         self.initialize_frame()
+        QTimer.singleShot(0, self.download_queue.start_pending)
 
     def navigate(self, page):
         if page not in self.navigation_buttons:
@@ -282,6 +290,14 @@ class ShellWindow(ShellFrame):
         self.appearance.show()
         self.appearance.theme_buttons[self.preferences["theme"]].setFocus()
 
+    def _settings_dismissed(self):
+        button = self.settings_button
+        if not button.rect().contains(button.mapFromGlobal(QCursor.pos())):
+            # A popup grabs the mouse, so its opener can miss the normal leave event.
+            QApplication.sendEvent(button, QEvent(QEvent.Leave))
+            button.setAttribute(Qt.WA_UnderMouse, False)
+            button.update()
+
     def set_theme(self, theme):
         if theme not in ("light", "dark"):
             return
@@ -343,6 +359,14 @@ class ShellWindow(ShellFrame):
             if not self._save_error_reported:
                 self._save_error_reported = True
                 QMessageBox.warning(self, "Preferences", "Your appearance preferences could not be saved.")
+
+    def _open_download(self, job_id):
+        self.navigate("downloaded")
+        for table in (self.downloaded_page.active_table, self.downloaded_page.completed_table):
+            row = table.row_for(job_id)
+            if row >= 0:
+                table.selectRow(row)
+                table.scrollToItem(table.item(row, 0))
 
     def closeEvent(self, event):
         self.search_page.inspector.stop()

@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -42,6 +43,8 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(set(self.window.navigation_buttons), {"search", "downloaded"})
         self.assertEqual(len(self.window.sidebar.findChildren(QPushButton)), 2)
         self.assertEqual(self.window.canvas.count(), 2)
+        self.assertEqual(self.window.navigation_buttons["downloaded"].text(), "Downloads")
+        self.assertEqual(self.window.navigation_buttons["downloaded"].accessibleName(), "Downloads")
         self.click(self.window.navigation_buttons["downloaded"])
         self.assertEqual(self.window.canvas.currentWidget(), self.window.downloaded_page)
         self.click(self.window.navigation_buttons["search"])
@@ -112,12 +115,35 @@ class ShellTests(unittest.TestCase):
         self.click(self.window.settings_button)
         self.assertTrue(self.window.appearance.isVisible())
         self.assertFalse(self.window.settings_button.isChecked())
-        QTest.keyClick(self.window.appearance, Qt.Key_Escape)
+        button = self.window.settings_button
+        away = self.window.search_page.mapToGlobal(self.window.search_page.rect().center())
+        button.setAttribute(Qt.WA_UnderMouse, True)
+        with patch("kazaa.ui.shell.QCursor.pos", return_value=away):
+            QTest.keyClick(self.window.appearance, Qt.Key_Escape)
         self.app.processEvents()
         self.assertFalse(self.window.appearance.isVisible())
+        self.assertFalse(button.underMouse())
         self.window.show_settings()
-        self.click(self.window.appearance.close_button)
+        button.setAttribute(Qt.WA_UnderMouse, True)
+        with patch("kazaa.ui.shell.QCursor.pos", return_value=away):
+            self.click(self.window.appearance.close_button)
         self.assertFalse(self.window.appearance.isVisible())
+        self.assertFalse(button.underMouse())
+        self.window.show_settings()
+        button.setAttribute(Qt.WA_UnderMouse, True)
+        with patch("kazaa.ui.shell.QCursor.pos", return_value=away):
+            self.window.appearance.hide()  # The popup also dismisses by hiding on outside clicks.
+        self.assertFalse(button.underMouse())
+        self.window.show_settings()
+        button.setAttribute(Qt.WA_UnderMouse, True)
+        over_button = button.mapToGlobal(button.rect().center())
+        with patch("kazaa.ui.shell.QCursor.pos", return_value=over_button):
+            self.window.appearance.close()
+        self.assertTrue(button.underMouse())
+        self.window.activateWindow()
+        self.app.processEvents()
+        button.setFocus()
+        self.assertTrue(button.hasFocus())  # Keyboard focus is preserved independently of hover.
 
     def test_previous_page_preference_is_ignored_and_dropped(self):
         self.path.write_text(json.dumps({"page": "music", "theme": "dark", "sidebar_width": 310}))

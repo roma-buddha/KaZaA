@@ -19,6 +19,7 @@ def stylesheet(c):
     assets = Path(__file__).with_name("assets")
     arrow = (assets / "dropdown.svg").as_posix()
     check = (assets / ("check-dark.svg" if c is DARK else "check-light.svg")).as_posix()
+    partial = (assets / ("partial-dark.svg" if c is DARK else "partial-light.svg")).as_posix()
     return f"""
     QWidget {{ color: {c['ink']}; font-family: 'Segoe UI'; font-size: 13px; }}
     QMainWindow, QWidget#root, QWidget#workspace, QWidget#canvas {{ background: {c['paper']}; }}
@@ -63,11 +64,23 @@ def stylesheet(c):
     QCheckBox {{ spacing: 8px; background: transparent; }}
     QCheckBox::indicator {{ width: 15px; height: 15px; border: 1px solid {c['muted']}; border-radius: 3px; }}
     QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{check}"); }}
+    QRadioButton {{ background: transparent; spacing: 8px; padding: 4px 0; }}
+    QRadioButton::indicator {{ width: 14px; height: 14px; border: 1px solid {c['muted']}; border-radius: 7px; }}
+    QRadioButton::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; }}
     QProgressBar {{ background: {c['hover']}; border: none; border-radius: 2px; }}
     QProgressBar::chunk {{ background: {c['accent']}; border-radius: 2px; }}
     QTableWidget#downloadsTable {{ background: transparent; border: none; outline: none;
         selection-background-color: {c['accent_soft']}; selection-color: {c['ink']}; }}
     QTableWidget#downloadsTable::item {{ padding: 8px; border-bottom: 1px solid {c['line']}; }}
+    QTableWidget#downloadsTable::item:selected {{ background: {c['accent_soft']};
+        color: {c['ink']}; border-bottom: 1px solid {c['accent']}; }}
+    QTreeWidget#torrentFiles {{ background: transparent; border: none; outline: none;
+        selection-background-color: {c['accent_soft']}; selection-color: {c['ink']}; }}
+    QTreeWidget#torrentFiles::item {{ height: 24px; }}
+    QTreeWidget#torrentFiles::indicator {{ width: 15px; height: 15px; border: 1px solid {c['muted']}; border-radius: 3px; }}
+    QTreeWidget#torrentFiles::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{check}"); }}
+    QTreeWidget#torrentFiles::indicator:indeterminate {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{partial}"); }}
+    QCheckBox::indicator:indeterminate {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{partial}"); }}
     QHeaderView {{ background: transparent; }}
     QHeaderView::section {{ background: {c['paper']}; color: {c['muted']}; font-size: 12px;
         border: none; border-bottom: 1px solid {c['line']}; padding: 10px 8px; text-align: left; }}
@@ -87,7 +100,7 @@ def stylesheet(c):
     QPushButton[role='theme']:checked {{ background: {c['accent_soft']};
         border: 1px solid {c['accent']}; color: {c['accent']}; }}
     QPushButton[role='theme']:focus {{ border: 2px solid {c['accent']}; }}
-    QDialog#appearance {{ background: {c['surface']}; border: 1px solid {c['line']}; border-radius: 8px; }}
+    QDialog#appearance, QDialog#deleteDownload, QDialog#torrentSelection {{ background: {c['surface']}; border: 1px solid {c['line']}; border-radius: 8px; }}
     QSplitter::handle {{ background: {c['paper']}; border-left: 1px solid {c['line']}; }}
     QSplitter::handle:hover, QSplitter::handle:focus {{ background: {c['accent_soft']}; }}
     """

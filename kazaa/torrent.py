@@ -10,6 +10,7 @@ while still downloading (like qBittorrent's "download in sequential order").
 import os
 import re
 import time
+import threading
 import urllib.request
 
 from PySide6.QtCore import QThread, Signal
@@ -46,6 +47,7 @@ def _fmt_rate(bps):
 
 
 _SESSION = None
+_FLUSH_LOCK = threading.Lock()
 
 
 def _session():
@@ -172,10 +174,20 @@ class TorrentWorker(QThread):
                     "eta": eta, "size": total, "name": name})
 
             if s.is_seeding or s.progress >= 1.0:
+                # Close disk handles before exposing outputs on Windows, and
+                # remove the completed torrent so the legacy path also stops sharing.
+                from .torrent_backend import pause_and_flush
+                mask = lt.alert.category_t.status_notification | lt.alert.category_t.storage_notification | lt.alert.category_t.error_notification
+                ses.apply_settings({"alert_mask": mask})
+                with _FLUSH_LOCK:
+                    pause_and_flush(lt, ses, h)
+                ses.remove_torrent(h)
+                self._handle = None
                 # note: s.save_path, not the current setting — a torrent
                 # already sitting in the session may live elsewhere
                 out = os.path.join(s.save_path, s.name)
                 dbg(f"torrent: done {out!r} ({total} bytes)")
+                self.progress.emit({"status": "downloading", "percent": 100.0, "speed": "0 B/s", "eta": "0:00", "size": total, "name": name})
                 self.finished_ok.emit({"output": out, "name": name,
                                        "size": total})
                 return

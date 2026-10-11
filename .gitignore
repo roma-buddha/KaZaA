@@ -15,6 +15,7 @@ dist/
 # Test / scratch output
 tools/out/
 tools/*.png
+tools/KaZaA.exe
 
 # OS
 Thumbs.db
