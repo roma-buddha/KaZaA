@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+from PySide6.QtGui import QContextMenuEvent, QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 from kazaa.ui.shell import ShellWindow
@@ -64,6 +64,17 @@ class ShredPageTests(unittest.TestCase):
         self.window.show()
         self.app.processEvents()
         self.page = self.window.shred_page
+
+    def _row_point(self, row):
+        return self.page.table.visualItemRect(self.page.table.item(row, 1)).center()
+
+    def _right_click(self, row):
+        point = self._row_point(row)
+        viewport = self.page.table.viewport()
+        QTest.mouseClick(viewport, Qt.RightButton, pos=point)
+        event = QContextMenuEvent(QContextMenuEvent.Mouse, point, viewport.mapToGlobal(point))
+        QApplication.sendEvent(viewport, event)
+        self.app.processEvents()
 
     def test_download_deletion_modes_accumulate_without_touching_files(self):
         from kazaa.ui.video_pages import DeleteDownloadDialog
@@ -137,6 +148,7 @@ class ShredPageTests(unittest.TestCase):
     def test_remove_from_shred_keeps_file_and_clears_pending_history(self):
         job_id = self._completed_download(self.file)
         self.window.download_queue.delete(job_id, "file")
+        self.page.table.selectRow(0)
         with patch.object(self.page, "_write_pending", side_effect=OSError("Disk unavailable")):
             self.page._remove()
         self.assertEqual(self.page.table.rowCount(), 1)
@@ -242,7 +254,8 @@ class ShredPageTests(unittest.TestCase):
         self.assertEqual(self.page.algorithm.text(), "Algorithm")
         self.assertTrue(self.page.algorithm.choices["dod"].isChecked())
         self.assertNotIn(str(self.file), self.settings.read_text())
-        QTest.mouseClick(self.page.remove_button, Qt.LeftButton)
+        self.page.table.selectRow(0)
+        QTest.keyClick(self.page.table, Qt.Key_Delete)
         self.assertEqual(self.page.table.rowCount(), 0)
         self.assertEqual(self.file.read_bytes(), b"Disposable UI test file")
 
@@ -271,7 +284,7 @@ class ShredPageTests(unittest.TestCase):
         self.assertEqual(self.page.table.cellWidget(0, 5).state.text(), "Ready")
         self.assertNotIn(str(self.file), self.page.targets)
         self.assertNotIn(str(self.file), self.page.results)
-        self.assertEqual(self.page.summary.text(), "1 shredded · 0 incomplete")
+        self.assertTrue(self.page.summary.isHidden())
         self.assertTrue(self.page.table.isEnabled())
 
     def test_rejects_folder_and_keeps_valid_files(self):
@@ -371,7 +384,7 @@ class ShredPageTests(unittest.TestCase):
         self.assertTrue(self.page.table.empty.isVisible())
         self.assertFalse(self.page.table.master.isEnabled())
         self.assertFalse(self.page.shred_button.isEnabled())
-        self.assertEqual(self.page.summary.text(), "1 shredded · 0 incomplete")
+        self.assertTrue(self.page.summary.isHidden())
 
     def test_failure_retains_row_when_later_success_disappears(self):
         second = self.folder / "second.txt"
@@ -396,7 +409,8 @@ class ShredPageTests(unittest.TestCase):
         self.assertIn("Test sharing violation", status.toolTip())
         self.assertEqual(self.file.read_bytes(), original)
         self.assertFalse(second.exists())
-        self.assertEqual(self.page.summary.text(), "1 shredded · 1 incomplete")
+        self.assertTrue(self.page.summary.isHidden())
+        self.assertTrue(self.page.notice.isVisible())
 
     def test_progress_percentages_are_visible_and_cancellation_keeps_row(self):
         self.page.add_files([self.file])
@@ -423,12 +437,14 @@ class ShredPageTests(unittest.TestCase):
                 self.assertTrue(self.page.progress.isVisible())
                 self.assertEqual(self.page.progress.value(), 42)
                 self.assertIn("42%", self.page.summary.text())
+                self.assertTrue(self.page.summary.isVisible())
                 self.assertFalse(self.page.table.master.isEnabled())
             finally:
                 release.set()
                 self.assertTrue(worker.wait(5000))
                 self.app.processEvents()
         self.assertEqual(widget.state.text(), "Cancelled")
+        self.assertTrue(self.page.summary.isHidden())
         self.assertFalse(widget.bar.isVisible())
         self.assertEqual(self.page.table.rowCount(), 1)
 
@@ -454,12 +470,125 @@ class ShredPageTests(unittest.TestCase):
         self.page.table.item(1, 0).setCheckState(Qt.Unchecked)
         self.page.table.setCurrentCell(0, 0)
         self.page.table.selectRow(0)
-        QTest.mouseClick(self.page.remove_button, Qt.LeftButton)
+        QTest.keyClick(self.page.table, Qt.Key_Delete)
         self.assertEqual(self.page.table.rowCount(), 1)
         self.assertFalse(self.page.table.currentIndex().isValid())
         self.assertEqual(len(self.page.table.selectedItems()), 0)
         self.assertTrue(self.file.exists())
         self.assertTrue(second.exists())
+
+    def test_ctrl_shift_escape_and_blank_click_match_downloads_selection(self):
+        files = [self.file, self.folder / "second.txt", self.folder / "third.txt"]
+        for path in files[1:]:
+            path.write_bytes(b"Keep file contents")
+        self.page.add_files(files)
+        table = self.page.table
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=self._row_point(0))
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, Qt.ControlModifier, self._row_point(2))
+        self.assertEqual(set(table.selected_paths()), {str(files[0]), str(files[2])})
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, Qt.ControlModifier, self._row_point(2))
+        self.assertEqual(table.selected_paths(), [str(files[0])])
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=self._row_point(0))
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, Qt.ShiftModifier, self._row_point(2))
+        self.assertEqual(set(table.selected_paths()), {str(path) for path in files})
+        self.assertEqual(len(self.page.selected_targets()), 3)
+        QTest.keyClick(table, Qt.Key_Escape)
+        self.assertEqual(table.selected_paths(), [])
+        QTest.keyClick(table, Qt.Key_Delete)
+        self.assertEqual(table.rowCount(), 3)
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=self._row_point(0))
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=QPoint(20, table.viewport().height() - 10))
+        self.assertEqual(table.selected_paths(), [])
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=self._row_point(0))
+        QTest.mouseClick(self.page.content, Qt.LeftButton, pos=QPoint(4, self.page.content.height() - 4))
+        self.assertEqual(table.selected_paths(), [])
+
+    def test_context_remove_preserves_group_and_removes_unchecked_highlighted_rows(self):
+        files = [self.file, self.folder / "second.txt", self.folder / "third.txt"]
+        for path in files[1:]:
+            path.write_bytes(b"Keep file contents")
+        self.page.add_files(files)
+        table = self.page.table
+        table.item(0, 0).setCheckState(Qt.Unchecked)
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=self._row_point(0))
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, Qt.ControlModifier, self._row_point(2))
+        self._right_click(0)
+        self.assertEqual(set(table.selected_paths()), {str(files[0]), str(files[2])})
+        menu = self.page._menu
+        self.assertEqual([action.text() for action in menu.actions()], ["Remove"])
+        self.assertTrue(menu.actions()[0].isEnabled())
+        menu.actions()[0].trigger()
+        menu.close()
+        self.assertEqual(table.rowCount(), 1)
+        self.assertEqual(table.item(0, 1).text(), "second.txt")
+        self.assertTrue(all(path.is_file() for path in files))
+        self.assertEqual(table.selected_paths(), [])
+
+    def test_right_click_unselected_row_targets_only_that_row_and_keyboard_menu_works(self):
+        second = self.folder / "second.txt"
+        second.write_bytes(b"Keep file contents")
+        self.page.add_files([self.file, second])
+        self.page.table.selectRow(0)
+        self._right_click(1)
+        self.assertEqual(self.page.table.selected_paths(), [str(second)])
+        self.page._menu.close()
+        QTest.keyClick(self.page.table, Qt.Key_F10, Qt.ShiftModifier)
+        menu = self.page._menu
+        self.assertTrue(menu.isVisible())
+        menu.actions()[0].trigger()
+        menu.close()
+        self.assertEqual(self.page.table.rowCount(), 1)
+        self.assertEqual(self.page.table.item(0, 1).text(), self.file.name)
+        self.assertTrue(second.exists())
+
+    def test_delete_multiple_pending_entries_updates_history_and_saved_queue(self):
+        second = self.folder / "second.txt"
+        second.write_bytes(b"Keep file contents")
+        for path in (self.file, second):
+            job_id = self._completed_download(path)
+            self.window.download_queue.delete(job_id, "file")
+        table = self.page.table
+        table.item(0, 0).setCheckState(Qt.Unchecked)
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, pos=self._row_point(0))
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, Qt.ControlModifier, self._row_point(1))
+        QTest.keyClick(table, Qt.Key_Delete)
+        self.assertEqual(table.rowCount(), 0)
+        self.assertTrue(self.file.is_file())
+        self.assertTrue(second.is_file())
+        for job in self.window.download_queue.jobs.values():
+            self.assertEqual(job["pending_shred_files"], [])
+            self.assertFalse(job["files_deleted"])
+        self.assertEqual(json.loads(self.page.queue_path.read_text())["files"], [])
+        self._reopen()
+        self.assertEqual(self.page.table.rowCount(), 0)
+
+    def test_removal_is_disabled_during_shredding_even_for_an_open_menu(self):
+        self.page.add_files([self.file])
+        self.page.table.selectRow(0)
+        menu = self.page.context_menu()
+        entered = Event()
+
+        def cancellable(target, algorithm, cancel, progress):
+            entered.set()
+            if not cancel.wait(3):
+                raise RuntimeError("Test cancellation timed out")
+            raise ShredCancelled("Cancelled; file kept")
+
+        with patch("kazaa.ui.shred_page.shred_file", side_effect=cancellable):
+            self.page.start_shredding(self.page.selected_targets())
+            worker = self.page.worker
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertFalse(self.page.context_menu().actions()[0].isEnabled())
+                menu.actions()[0].trigger()
+                QTest.keyClick(self.page.table, Qt.Key_Delete)
+                self.assertEqual(self.page.table.rowCount(), 1)
+            finally:
+                self.page.stop()
+                self.assertTrue(worker.wait(5000))
+                self.app.processEvents()
+        self.assertTrue(self.file.exists())
+        menu.deleteLater()
 
 
 if __name__ == "__main__":

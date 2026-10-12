@@ -96,6 +96,7 @@ def stylesheet(c):
         subcontrol-position: right center; right: 10px; }}
     QPushButton[role='outline'] {{ border: 1px solid {c['accent']}; padding: 8px 20px; }}
     QDialog#shredConfirmation {{ background: {c['surface']}; border: 1px solid {c['line']}; }}
+    QDialog#shredConfirmation QLabel[role='muted'] {{ font-size: 14px; }}
     QDialog#shredConfirmation QPushButton[role='plain']:focus {{ border-color: transparent; text-decoration: underline; }}
     QHeaderView::section {{ background: {c['paper']}; color: {c['muted']}; font-size: 12px;
         border: none; border-bottom: 1px solid {c['line']}; padding: 10px 8px; text-align: left; }}

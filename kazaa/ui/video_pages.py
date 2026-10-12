@@ -422,6 +422,9 @@ class SearchPage(CenteredPage):
                           if generation == self.inspector.generation)
         pending = []
         for entry in entries:
+            if entry["error"] and entry["source"] == "link":
+                self.show_notice("This link is not supported.")
+                continue
             old = self.cards.get(entry["url"])
             if old and (old.info or entry["url"] in inspecting):
                 continue
@@ -458,7 +461,15 @@ class SearchPage(CenteredPage):
 
     def _inspected(self, generation, url, info, error):
         if url in self.cards and self.current_input:
-            self.cards[url].set_result(info, error)
+            card = self.cards[url]
+            if not info and isinstance(card, VideoCard):
+                self.cards.pop(url)
+                self.cards_layout.removeWidget(card)
+                card.hide()
+                card.deleteLater()
+                self.show_notice("This link is not supported.")
+            else:
+                card.set_result(info, error)
             self._selection_changed()
 
     def _selected(self):
@@ -522,6 +533,7 @@ class SearchPage(CenteredPage):
 class DownloadTable(QTableWidget):
     menu_requested = Signal(str, QPoint)
     clear_requested = Signal()
+    delete_requested = Signal()
 
     def __init__(self):
         super().__init__(0, 11)
@@ -576,6 +588,11 @@ class DownloadTable(QTableWidget):
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete:
+            if not event.isAutoRepeat():
+                self.delete_requested.emit()
+            event.accept()
+            return
         if event.key() == Qt.Key_Escape:
             self.clear_requested.emit()
             event.accept()
@@ -657,6 +674,7 @@ class DownloadedPage(CenteredPage):
             layout.addWidget(table)
             table.menu_requested.connect(self._show_menu)
             table.clear_requested.connect(self._clear_selection)
+            table.delete_requested.connect(lambda: self._delete(self.selected_jobs()))
             table.cellDoubleClicked.connect(lambda row, column, table=table:
                 self._open_download(table.item(row, 0).data(Qt.UserRole)))
         queue.changed.connect(self.update_job)
@@ -833,6 +851,8 @@ class DownloadedPage(CenteredPage):
 
     def _delete(self, job_id):
         job_ids = [job_id] if isinstance(job_id, str) else list(dict.fromkeys(job_id))
+        if not job_ids:
+            return
         if not self._can_delete(job_ids):
             self._notice("Stop active downloads before deleting the selection.")
             return

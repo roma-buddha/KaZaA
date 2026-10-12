@@ -259,6 +259,85 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0][1], "https://example.com/new")
 
+    def test_unsupported_inspection_shows_small_notice_without_unavailable_card(self):
+        from kazaa.ui.video_pages import SearchPage
+        page = SearchPage(self.queue)
+        page.inspector.worker_factory = FakeWorker
+        url = "https://open.spotify.com/playlist/example"
+        for error in ("ERROR: [DRM] The requested site is known to use DRM protection.\nPlease DO NOT open an issue.",
+                      "ERROR: Unsupported URL: " + url, "ERROR: No suitable extractor"):
+            with self.subTest(error=error):
+                page.input.setPlainText(url)
+                page.inspect()
+                worker = next(iter(page.inspector.workers))
+                worker.fail(error)
+                self.assertEqual(page.notice.text(), "This link is not supported.")
+                self.assertFalse(page.notice.isHidden())
+                self.assertEqual(page.cards, {})
+                self.assertEqual(page.cards_layout.count(), 0)
+                self.assertEqual(page.input.toPlainText(), url)
+                self.assertTrue(page.download_selected.isHidden())
+                self.assertEqual(self.queue.jobs, {})
+        page.deleteLater()
+
+    def test_invalid_link_input_uses_notice_without_creating_result_or_worker(self):
+        from kazaa.ui.video_pages import SearchPage
+        page = SearchPage(self.queue)
+        page.inspector.worker_factory = FakeWorker
+        for url in ("ftp://example.com/video", "https://www.youtube.com/playlist?list=example"):
+            with self.subTest(url=url):
+                page.input.setPlainText(url)
+                page.inspect()
+                self.assertEqual(page.notice.text(), "This link is not supported.")
+                self.assertEqual(page.cards, {})
+                self.assertEqual(page.cards_layout.count(), 0)
+                self.assertEqual(page.inspector.workers, {})
+                self.assertEqual(page.input.toPlainText(), url)
+        self.assertEqual(FakeWorker.created, [])
+        page.deleteLater()
+
+    def test_failed_link_can_be_inspected_again_and_notice_clears(self):
+        from kazaa.ui.video_pages import SearchPage
+        page = SearchPage(self.queue)
+        page.inspector.worker_factory = FakeWorker
+        url = "https://example.com/retry"
+        page.input.setPlainText(url)
+        page.inspect()
+        next(iter(page.inspector.workers)).fail("Unsupported URL")
+        self.assertNotIn(url, page.cards)
+        page.inspect()
+        self.assertTrue(page.notice.isHidden())
+        next(iter(page.inspector.workers)).succeed(media(url))
+        self.assertTrue(page.cards[url].download.isEnabled())
+        self.assertTrue(page.cards[url].selected.isChecked())
+        self.assertTrue(page.notice.isHidden())
+        page.deleteLater()
+
+    def test_unsupported_link_in_batch_preserves_supported_results_and_downloads(self):
+        from kazaa.ui.video_pages import SearchPage
+        page = SearchPage(self.queue)
+        page.inspector.worker_factory = FakeWorker
+        first, unsupported, last = "https://example.com/first", "https://open.spotify.com/playlist/example", "https://example.com/last"
+        page.input.setPlainText("\n".join((first, unsupported, last)))
+        page.inspect()
+        card = page.cards[first]
+        worker = next(w for w in page.inspector.workers if w.request["url"] == first)
+        worker.succeed(media(first))
+        worker = next(w for w in page.inspector.workers if w.request["url"] == unsupported)
+        worker.fail("ERROR: [DRM] This site will NOT be supported")
+        worker = next(w for w in page.inspector.workers if w.request["url"] == last)
+        worker.succeed(media(last))
+        self.assertEqual(set(page.cards), {first, last})
+        self.assertIs(page.cards[first], card)
+        self.assertEqual(page.notice.text(), "This link is not supported.")
+        self.assertFalse(page.download_selected.isHidden())
+        self.assertTrue(page.download_selected.isEnabled())
+        page._download_selected()
+        self.assertEqual(len(self.queue.jobs), 2)
+        self.assertEqual(page.cards, {})
+        self.assertEqual(page.input.toPlainText(), unsupported)
+        page.deleteLater()
+
     def test_search_batch_queues_valid_items_and_shows_unavailable_options(self):
         window = ShellWindow(self.root / "shell.json")
         window.download_queue.worker_factory = FakeWorker
@@ -666,6 +745,69 @@ class VideoTests(unittest.TestCase):
             self.queue.workers[job_id].succeed({"files": [str(output)]})
             entries.append((job_id, output))
         return entries
+
+    def test_download_delete_key_confirms_single_or_multiple_selected_rows(self):
+        from kazaa.ui.video_pages import DeleteDownloadDialog, DownloadedPage
+        entries = self._completed_batch()
+        page = DownloadedPage(self.queue)
+        page.resize(1500, 700)
+        page.show()
+        self.app.processEvents()
+        table = page.completed_table
+        QTest.mouseClick(table.viewport(), Qt.LeftButton,
+                         pos=table.visualItemRect(table.item(0, 0)).center())
+        with patch.object(DeleteDownloadDialog, "exec", return_value=DeleteDownloadDialog.Rejected) as dialog:
+            QTest.keyClick(table, Qt.Key_Delete)
+            dialog.assert_called_once()
+        self.assertEqual(len(self.queue.jobs), 3)
+        self.assertTrue(all(output.exists() for _, output in entries))
+        with patch.object(DeleteDownloadDialog, "exec", return_value=DeleteDownloadDialog.Accepted) as dialog, \
+                patch.object(DeleteDownloadDialog, "mode", return_value="file"), \
+                patch.object(self.queue, "shred_files") as handoff:
+            QTest.keyClick(table, Qt.Key_Delete)
+            dialog.assert_called_once()
+            handoff.assert_called_once_with([str(entries[0][1])])
+        self.assertEqual(self.queue.jobs[entries[0][0]]["pending_shred_files"], [str(entries[0][1])])
+        QTest.mouseClick(table.viewport(), Qt.LeftButton, Qt.ControlModifier,
+                         pos=table.visualItemRect(table.item(1, 0)).center())
+        self.assertEqual(set(page.selected_jobs()), {entries[0][0], entries[1][0]})
+        with patch.object(DeleteDownloadDialog, "exec", return_value=DeleteDownloadDialog.Accepted) as dialog:
+            QTest.keyClick(table, Qt.Key_Delete)
+            dialog.assert_called_once()
+        self.assertEqual(set(self.queue.jobs), {entries[2][0]})
+        self.assertEqual(table.rowCount(), 1)
+        self.assertTrue(all(output.exists() for _, output in entries))
+        page.close()
+        page.deleteLater()
+
+    def test_download_delete_key_ignores_empty_selection_and_blocks_active_jobs(self):
+        from kazaa.ui.video_pages import DeleteDownloadDialog, DownloadedPage
+        job_id, output = self._completed_fixture()
+        active = self.queue.submit(media("https://example.com/active-keyboard"), self.options)
+        page = DownloadedPage(self.queue)
+        page.resize(1500, 700)
+        page.show()
+        self.app.processEvents()
+        with patch.object(DeleteDownloadDialog, "exec") as dialog:
+            QTest.keyClick(page.completed_table, Qt.Key_Delete)
+            dialog.assert_not_called()
+            page.completed_table.selectRow(0)
+            page.active_table.selectRow(0)
+            QTest.keyClick(page.active_table, Qt.Key_Delete)
+            dialog.assert_not_called()
+        self.assertIn("Stop active downloads", page.notice.text())
+        self.assertEqual(set(self.queue.jobs), {job_id, active})
+        self.assertTrue(output.exists())
+        self.queue.pause(active)
+        self.queue.workers[active].fail("Cancelled")
+        page.completed_table.clearSelection()
+        page.active_table.selectRow(0)
+        with patch.object(DeleteDownloadDialog, "exec", return_value=DeleteDownloadDialog.Rejected) as dialog:
+            QTest.keyClick(page.active_table, Qt.Key_Delete)
+            dialog.assert_called_once()
+        self.assertIn(active, self.queue.jobs)
+        page.close()
+        page.deleteLater()
 
     def test_download_click_selection_context_menu_and_moving_rows(self):
         from kazaa.ui.video_pages import DownloadedPage

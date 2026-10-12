@@ -32,11 +32,12 @@ and Ctrl+L to focus Search.
 
 ### Shred
 
-Drop individual local files from Windows Explorer into the Shred table, or use
-**Add files…**. The table shows name, type, path, size and status. Files start
+Drop individual local files from Windows Explorer into the Shred table.
+The table shows name, type, path, size and status. Files start
 checked; use the table's header checkbox or individual checkboxes to choose
-the batch. **Remove** takes checked files out of the list
-without touching files on disk.
+the batch. Click rows to highlight them, Ctrl-click for multiple rows, or Shift-click
+for a range. Right-click the highlighted rows and choose **Remove**, or press Delete,
+to remove them from the list without touching files on disk. Escape clears highlights.
 
 Open **Algorithm** beside **Shred selected** to choose Single pass (default), Two passes, DoD-style (3), Seven passes, or Gutmann
 (35), then **Shred selected** and confirm the batch. Every pass overwrites all
@@ -47,7 +48,8 @@ their paths and file identities are saved locally until shredded or removed from
 the queue. Files added manually and shredding history stay only in memory.
 The table is centered at 75% of the workspace width, adapting to smaller windows.
 Per-file percentages and thin progress bars match Downloads; overall progress
-appears below the table. Verified successes leave the table immediately, while
+appears below the table only while shredding; idle counts and explanatory footer text
+are hidden. Verified successes leave the table immediately, while
 failed and cancelled files stay with their status and error tooltips. The
 confirmation has only Cancel and Shred controls. Cancelling or closing the app
 stops the worker safely; a partly overwritten file stays at its existing size,
@@ -67,6 +69,8 @@ Paste one or several video links into Search, then click **Inspect** or press En
 Shift+Enter adds another line. Each result shows its title, thumbnail, creator,
 and duration. YouTube and other yt-dlp-supported video sites
 use the same workflow; individual site restrictions can still prevent extraction.
+Links that cannot be inspected show a small **This link is not supported.** notice
+instead of an unavailable preview and technical error text. Their input stays for retry.
 New results default to Video, regardless of the previous export type.
 After inspection, choose separately for each result using the compact controls
 and Download button in a single row to the right of the preview:
@@ -102,7 +106,7 @@ as applicable; the keyboard menu key and Shift+F10 also work. Click a row to sel
 only it, or Ctrl-click to add or remove rows from the highlighted selection.
 Double-click a downloaded row to open its file in the default app for its format;
 entries with several files offer a file picker menu. Right-click a selected row
-to delete the selection together.
+to delete the selection together, or press the Delete key to open the same dialog.
 Escape clears selection. **Delete…** offers entry only, file only, or both.
 Choosing a file-deletion option sends the files to **Shred**, where they accumulate
 without changing the files on disk. Active jobs must be stopped first. Keeping

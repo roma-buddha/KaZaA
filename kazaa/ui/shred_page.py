@@ -6,9 +6,9 @@ from pathlib import Path
 from threading import Event
 import time
 
-from PySide6.QtCore import QEvent, QModelIndex, QRect, QSignalBlocker, Qt, QThread, Signal
+from PySide6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, QRect, QSignalBlocker, Qt, QThread, Signal
 from PySide6.QtGui import QActionGroup
-from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog, QFrame,
+from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFrame,
     QHBoxLayout, QHeaderView, QLabel, QMenu, QProgressBar, QPushButton,
     QStyle, QStyledItemDelegate, QStyleOptionButton, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
@@ -150,6 +150,8 @@ class ShredProgress(QWidget):
 
 class ShredTable(QTableWidget):
     files_dropped = Signal(list)
+    menu_requested = Signal(QPoint)
+    remove_requested = Signal()
 
     def __init__(self):
         super().__init__(0, 6)
@@ -181,11 +183,55 @@ class ShredTable(QTableWidget):
         self.master.setToolTip("Select all / deselect all")
         header.sectionResized.connect(self._position_master)
         header.geometriesChanged.connect(self._position_master)
-        self.empty = QLabel("Drop files here\nor add them from your computer", self.viewport())
+        self.empty = QLabel("Drop files here", self.viewport())
         self.empty.setProperty("role", "muted")
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.empty.setWordWrap(True)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._context_menu)
+
+    def selected_paths(self):
+        return [self.item(index.row(), 0).data(Qt.UserRole)
+                for index in self.selectionModel().selectedRows()]
+
+    def _context_menu(self, position):
+        if not self.isEnabled():
+            return
+        row = self.rowAt(position.y())
+        if row < 0:
+            return
+        index = self.model().index(row, 0)
+        if not self.item(row, 0).isSelected():
+            self.selectionModel().select(index, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+        self.selectionModel().setCurrentIndex(index, QItemSelectionModel.NoUpdate)
+        self.menu_requested.emit(self.viewport().mapToGlobal(position))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            if (self.rowAt(int(event.position().y())) < 0 or
+                    not event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)):
+                self.clearSelection()
+        if event.button() == Qt.RightButton:
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete:
+            if self.isEnabled():
+                self.remove_requested.emit()
+            event.accept()
+        elif event.key() == Qt.Key_Escape:
+            self.clearSelection()
+            event.accept()
+        elif event.key() == Qt.Key_Menu or (event.key() == Qt.Key_F10 and event.modifiers() & Qt.ShiftModifier):
+            row = self.currentRow()
+            if row >= 0:
+                self._context_menu(self.visualItemRect(self.item(row, 0)).center())
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -277,20 +323,15 @@ class ShredPage(CenteredPage):
         self.batch_total = self.batch_done = 0
         layout = self.content_layout
         layout.setSpacing(16)
-        layout.addWidget(label("Shred", "pageTitle"))
-        controls = QHBoxLayout()
-        self.add_button = button("Add files…", self._browse)
-        self.remove_button = button("Remove", self._remove)
-        self.remove_button.setToolTip("Remove checked files from this list")
-        controls.addWidget(self.add_button)
-        controls.addStretch()
-        controls.addWidget(self.remove_button)
-        layout.addLayout(controls)
         self.table = ShredTable()
         self.table.files_dropped.connect(self.add_files)
+        self.table.menu_requested.connect(self._show_menu)
+        self.table.remove_requested.connect(self._remove)
         self.table.itemChanged.connect(self._selection_changed)
         self.table.master.clicked.connect(lambda _: self._check_all(self.table.master.checkState() != Qt.Unchecked))
         layout.addWidget(self.table)
+        for background in (self.widget(), self.content, self.viewport()):
+            background.installEventFilter(self)
         options = QHBoxLayout()
         options.addStretch()
         self.cancel_button = button("Cancel", self.stop)
@@ -303,6 +344,7 @@ class ShredPage(CenteredPage):
         options.addWidget(self.shred_button)
         layout.addLayout(options)
         self.summary = label("", "muted")
+        self.summary.hide()
         layout.addWidget(self.summary)
         self.progress = QProgressBar()
         self.progress.setAccessibleName("Shredding progress")
@@ -314,7 +356,6 @@ class ShredPage(CenteredPage):
         self.notice = label("", "error")
         self.notice.hide()
         layout.addWidget(self.notice)
-        layout.addWidget(label(LIMITATION, "muted"))
         self._selection_changed()
         self._load_pending()
 
@@ -437,10 +478,6 @@ class ShredPage(CenteredPage):
         self.table.refresh_empty()
         self._selection_changed()
 
-    def _browse(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Add files to shred")
-        self.add_files(paths)
-
     def _check_all(self, selected):
         if self.worker:
             return
@@ -454,7 +491,9 @@ class ShredPage(CenteredPage):
     def _remove(self):
         if self.worker:
             return
-        removing = {target.path for target in self.selected_targets()}
+        removing = set(self.table.selected_paths())
+        if not removing:
+            return
         released = [path for path in removing if path in self.pending_downloads]
         pending = {path: target for path, target in self.pending_downloads.items() if path not in removing}
         if released:
@@ -469,7 +508,7 @@ class ShredPage(CenteredPage):
             for row in reversed(range(self.table.rowCount())):
                 item = self.table.item(row, 0)
                 path = item.data(Qt.UserRole)
-                if item.checkState() == Qt.Checked:
+                if path in removing:
                     self.table.removeRow(row)
                     self.targets.pop(path, None)
                     self.results.pop(path, None)
@@ -480,17 +519,32 @@ class ShredPage(CenteredPage):
         if released:
             self.files_released.emit(released)
 
+    def context_menu(self):
+        menu = QMenu(self)
+        action = menu.addAction("Remove", self._remove)
+        action.setEnabled(self.worker is None and bool(self.table.selected_paths()))
+        action.setToolTip("Remove selected entries from this list; files stay on disk")
+        menu.setToolTipsVisible(True)
+        return menu
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            self.table.clearSelection()
+        return super().eventFilter(watched, event)
+
+    def _show_menu(self, position):
+        self._menu = self.context_menu()
+        self._menu.popup(position)
+
     def _selection_changed(self, *args):
         targets = self.selected_targets()
         self.shred_button.setEnabled(bool(targets) and self.worker is None)
-        self.remove_button.setEnabled(self.worker is None and bool(targets))
         with QSignalBlocker(self.table.master):
             self.table.master.setCheckState(Qt.Unchecked if not targets else
                 Qt.Checked if len(targets) == len(self.targets) else Qt.PartiallyChecked)
         self.table.master.setEnabled(self.worker is None and bool(self.targets))
         if not self.worker:
-            count = len(targets)
-            self.summary.setText(f"{count} {'file' if count == 1 else 'files'} selected · {file_size(sum(t.size for t in targets))}")
+            self.summary.hide()
 
     def _confirm_shred(self):
         targets = self.selected_targets()
@@ -512,7 +566,7 @@ class ShredPage(CenteredPage):
         self.worker.progress.connect(self._progress)
         self.worker.result.connect(self._result)
         self.worker.finished.connect(self._finished)
-        for widget in (self.table, self.add_button, self.algorithm):
+        for widget in (self.table, self.algorithm):
             widget.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.cancel_button.setText("Cancel")
@@ -520,6 +574,7 @@ class ShredPage(CenteredPage):
         self.progress.setValue(0)
         self.progress.show()
         self.summary.setText(f"Shredding {self.batch_total} files…")
+        self.summary.show()
         self._selection_changed()
         self.worker.start()
 
@@ -575,13 +630,13 @@ class ShredPage(CenteredPage):
     def _finished(self):
         worker, self.worker = self.worker, None
         worker.deleteLater()
-        for widget in (self.table, self.add_button, self.algorithm):
+        for widget in (self.table, self.algorithm):
             widget.setEnabled(True)
         self.cancel_button.hide()
         self.progress.hide()
         self._selection_changed()
         shredded = self.batch_results.count("shredded")
-        self.summary.setText(f"{shredded} shredded · {self.batch_total - shredded} incomplete")
+        self.summary.clear()
         if self.batch_total != shredded:
             self.notice.setText("Some files were not confirmed shredded. Hover over their status for details. Interrupted files may be partially overwritten.")
             self.notice.show()
