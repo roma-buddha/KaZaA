@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFrame,
     QStyle, QStyledItemDelegate, QStyleOptionButton, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from ..shredder import ALGORITHMS, LIMITATION, FileTarget, ShredCancelled, ShredError, inspect_file, shred_file
+from ..shredder import ALGORITHMS, LIMITATION, FileTarget, ShredCancelled, ShredError, inspect_entry, inspect_file, shred_file
 from .video_pages import CenteredPage, button, label
 from .torrent_widgets import AllFilesBox
 
@@ -80,6 +80,9 @@ class AlgorithmMenu(QPushButton):
         self.group.triggered.connect(lambda action: self.set_algorithm(action.data()))
         self.selected = selected if selected in self.choices else "single"
         self.choices[self.selected].setChecked(True)
+        self.setMinimumWidth(max(self.fontMetrics().horizontalAdvance(choice.label) for choice in ALGORITHMS) + 60)
+        if selected in self.choices:
+            self.setText(self.currentText())
         self._tooltip()
 
     def set_algorithm(self, key):
@@ -87,6 +90,7 @@ class AlgorithmMenu(QPushButton):
             return
         self.selected = key
         self.choices[key].setChecked(True)
+        self.setText(self.currentText())
         self._tooltip()
         self.changed.emit(key)
 
@@ -156,7 +160,7 @@ class ShredTable(QTableWidget):
     def __init__(self):
         super().__init__(0, 6)
         self.setObjectName("shredTable")
-        self.setAccessibleName("Files to shred; drop files from Windows Explorer")
+        self.setAccessibleName("Files to shred; drop files or folders from Windows Explorer")
         self.setHorizontalHeaderLabels(["", "Name", "Type", "Path", "Size", "Progress"])
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DropOnly)
@@ -183,7 +187,7 @@ class ShredTable(QTableWidget):
         self.master.setToolTip("Select all / deselect all")
         header.sectionResized.connect(self._position_master)
         header.geometriesChanged.connect(self._position_master)
-        self.empty = QLabel("Drop files here", self.viewport())
+        self.empty = QLabel("Drop files or folders here", self.viewport())
         self.empty.setProperty("role", "muted")
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -312,7 +316,7 @@ class ShredPage(CenteredPage):
     files_shredded = Signal(list)
     files_released = Signal(list)
 
-    def __init__(self, algorithm="single", parent=None, queue_path=None):
+    def __init__(self, algorithm=None, parent=None, queue_path=None):
         super().__init__(0.75, parent)
         self.worker = None
         self.targets = {}
@@ -323,13 +327,14 @@ class ShredPage(CenteredPage):
         self.batch_total = self.batch_done = 0
         layout = self.content_layout
         layout.setSpacing(16)
+        self.widget().layout().setAlignment(self.content, Qt.AlignmentFlag(0))
         self.table = ShredTable()
         self.table.files_dropped.connect(self.add_files)
         self.table.menu_requested.connect(self._show_menu)
         self.table.remove_requested.connect(self._remove)
         self.table.itemChanged.connect(self._selection_changed)
         self.table.master.clicked.connect(lambda _: self._check_all(self.table.master.checkState() != Qt.Unchecked))
-        layout.addWidget(self.table)
+        layout.addWidget(self.table, 1)
         for background in (self.widget(), self.content, self.viewport()):
             background.installEventFilter(self)
         options = QHBoxLayout()
@@ -462,16 +467,28 @@ class ShredPage(CenteredPage):
         if self.worker:
             return
         errors = []
+        pending = list(reversed(paths))
+        seen = {os.path.normcase(path) for path in self.targets}
+        folders = set()
         with QSignalBlocker(self.table):
-            for path in paths:
+            while pending:
+                path = pending.pop()
                 try:
-                    target = inspect_file(path)
+                    entry = inspect_entry(path)
                 except (OSError, ValueError, ShredError) as error:
                     errors.append(f"{Path(path).name}: {error}")
                     continue
-                key = os.path.normcase(target.path)
-                if any(os.path.normcase(p) == key for p in self.targets):
+                if not isinstance(entry, FileTarget):
+                    key = os.path.normcase(os.path.abspath(path))
+                    if key not in folders:
+                        folders.add(key)
+                        pending.extend(reversed(entry))
                     continue
+                target = entry
+                key = os.path.normcase(target.path)
+                if key in seen:
+                    continue
+                seen.add(key)
                 self._append_target(target)
         self.notice.setText("\n".join(errors[:4]) + (f"\n…and {len(errors) - 4} more." if len(errors) > 4 else ""))
         self.notice.setVisible(bool(errors))

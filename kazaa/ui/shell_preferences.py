@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 DEFAULTS = {"theme": "light", "sidebar_width": 250,
-            "sidebar_collapsed": False, "page": "search", "shred_algorithm": "single"}
+            "sidebar_collapsed": False, "page": "search", "shred_algorithm": None}
 
 
 def load(path):

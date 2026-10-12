@@ -57,7 +57,7 @@ class FileTarget:
     modified: int
 
 
-def inspect_file(path):
+def _inspect_path(path):
     """Snapshot identity without following a supplied link or device path."""
     path = Path(os.path.abspath(os.fspath(path)))
     if os.name != "nt":
@@ -69,7 +69,21 @@ def inspect_file(path):
         info = component.lstat()
         if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
             raise ShredError("Links, junctions and cloud placeholders are not supported.")
-    info = path.lstat()
+    return path, path.lstat()
+
+
+def inspect_file(path):
+    """Snapshot a file's identity without following links."""
+    path, info = _inspect_path(path)
+    _validate_info(info)
+    return FileTarget(str(path), info.st_size, info.st_dev, info.st_ino, info.st_mtime_ns)
+
+
+def inspect_entry(path):
+    """Expand a local folder one level; validate every descendant separately."""
+    path, info = _inspect_path(path)
+    if stat.S_ISDIR(info.st_mode):
+        return tuple(sorted(path.iterdir(), key=lambda child: child.name.casefold()))
     _validate_info(info)
     return FileTarget(str(path), info.st_size, info.st_dev, info.st_ino, info.st_mtime_ns)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QItemSelectionModel, QPoint, QSignalBlocker, Qt, QUrl, Signal
 from PySide6.QtGui import QCursor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame,
-    QHBoxLayout, QHeaderView, QLabel, QMenu, QPlainTextEdit,
+    QApplication, QHBoxLayout, QHeaderView, QLabel, QMenu, QPlainTextEdit,
     QProgressBar, QPushButton, QRadioButton, QScrollArea, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget)
 
@@ -113,6 +113,22 @@ class CenteredPage(QScrollArea):
 class LinkInput(QPlainTextEdit):
     inspect_requested = Signal()
     sources_added = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.viewport().installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if watched is self.viewport() and event.type() == QEvent.Enter and self.isEnabled():
+            try:
+                copied = parse_sources(QApplication.clipboard().text())
+                known = {source_key(entry["url"]) for entry in parse_sources(self.toPlainText()) if not entry["error"]}
+                added = [entry["url"] for entry in copied if not entry["error"] and source_key(entry["url"]) not in known]
+            except (ValueError, OSError):
+                added = []
+            if added:
+                self.sources_added.emit("\n".join(added))
+        return super().eventFilter(watched, event)
 
     def canInsertFromMimeData(self, data):
         return data.hasUrls() or super().canInsertFromMimeData(data)

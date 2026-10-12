@@ -13,9 +13,9 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import QMimeData, QObject, Qt, QUrl, Signal
+from PySide6.QtCore import QMimeData, QObject, QPointF, Qt, QUrl, Signal
 from PySide6.QtTest import QTest
-from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtGui import QContextMenuEvent, QEnterEvent
 from PySide6.QtWidgets import QApplication
 from kazaa import transcripts, video_backend as backend
 from kazaa.video_jobs import Inspector, VideoQueue
@@ -82,6 +82,38 @@ class VideoTests(unittest.TestCase):
         self.app.processEvents()
         self.tool_patch.stop()
         self.temporary.cleanup()
+
+    def test_hover_adds_copied_links_once_without_inspecting_or_replacing_input(self):
+        from kazaa.ui.video_pages import SearchPage
+        page = SearchPage(self.queue)
+        page.input.setPlainText("https://example.com/existing")
+        copied = "https://example.com/new\nhttps://example.com/new#fragment\nmagnet:?xt=urn:btih:" + "a" * 40
+        clipboard = SimpleNamespace(text=lambda: copied)
+        with patch("kazaa.ui.video_pages.QApplication.clipboard", return_value=clipboard), \
+                patch.object(page.inspector, "inspect") as inspect:
+            for _ in range(2):
+                event = QEnterEvent(QPointF(), QPointF(), QPointF())
+                QApplication.sendEvent(page.input.viewport(), event)
+            self.assertEqual(page.input.toPlainText(), "https://example.com/existing\nhttps://example.com/new\nmagnet:?xt=urn:btih:" + "a" * 40)
+            inspect.assert_not_called()
+            self.assertEqual(page.cards, {})
+        page.deleteLater()
+        self.app.processEvents()
+
+    def test_hover_ignores_unrelated_malformed_clipboard_and_disabled_input(self):
+        from kazaa.ui.video_pages import SearchPage
+        page = SearchPage(self.queue)
+        page.input.setPlainText("unfinished input")
+        for copied in ("ordinary copied text", "http://[invalid", ""):
+            with patch("kazaa.ui.video_pages.QApplication.clipboard", return_value=SimpleNamespace(text=lambda: copied)):
+                QApplication.sendEvent(page.input.viewport(), QEnterEvent(QPointF(), QPointF(), QPointF()))
+            self.assertEqual(page.input.toPlainText(), "unfinished input")
+        page.input.setEnabled(False)
+        with patch("kazaa.ui.video_pages.QApplication.clipboard", return_value=SimpleNamespace(text=lambda: "https://example.com/new")):
+            QApplication.sendEvent(page.input.viewport(), QEnterEvent(QPointF(), QPointF(), QPointF()))
+        self.assertEqual(page.input.toPlainText(), "unfinished input")
+        page.deleteLater()
+        self.app.processEvents()
 
     def test_input_normalizes_video_and_deduplicates_without_expanding_playlist(self):
         entries = backend.parse_links("https://youtube.com/watch?v=abc&list=xyz\nhttps://www.youtube.com/watch?v=abc\nhttps://example.com/video#part")

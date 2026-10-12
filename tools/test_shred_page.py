@@ -251,7 +251,7 @@ class ShredPageTests(unittest.TestCase):
         saved = json.loads(self.settings.read_text())
         self.assertEqual(saved["page"], "shred")
         self.assertEqual(saved["shred_algorithm"], "dod")
-        self.assertEqual(self.page.algorithm.text(), "Algorithm")
+        self.assertEqual(self.page.algorithm.text(), "DoD-style · 3 passes")
         self.assertTrue(self.page.algorithm.choices["dod"].isChecked())
         self.assertNotIn(str(self.file), self.settings.read_text())
         self.page.table.selectRow(0)
@@ -287,11 +287,49 @@ class ShredPageTests(unittest.TestCase):
         self.assertTrue(self.page.summary.isHidden())
         self.assertTrue(self.page.table.isEnabled())
 
-    def test_rejects_folder_and_keeps_valid_files(self):
-        self.page.add_files([self.folder, self.file])
-        self.assertEqual(self.page.table.rowCount(), 1)
-        self.assertTrue(self.page.notice.isVisible())
-        self.assertIn("folders", self.page.notice.text())
+    def test_folders_add_nested_files_once_without_touching_contents(self):
+        documents = self.folder / "documents"
+        nested = documents / "nested"
+        nested.mkdir(parents=True)
+        (documents / "empty").mkdir()
+        first, second = documents / "first.txt", nested / "second.txt"
+        first.write_bytes(b"First document")
+        second.write_bytes(b"Nested document")
+        self.page.add_files([documents, nested, first, self.file])
+        self.assertEqual(set(self.page.targets), {str(first), str(second), str(self.file)})
+        self.assertEqual(self.page.table.rowCount(), 3)
+        self.assertTrue(self.page.notice.isHidden())
+        self.assertIsNone(self.page.worker)
+        self.assertEqual(second.read_bytes(), b"Nested document")
+        self.page.table.item(self.page._row(str(second)), 0).setCheckState(Qt.Unchecked)
+        self.page.start_shredding(self.page.selected_targets())
+        self.assertTrue(self.page.worker.wait(5000))
+        self.app.processEvents()
+        self.assertFalse(first.exists())
+        self.assertEqual(second.read_bytes(), b"Nested document")
+
+    def test_folder_expansion_rejects_junctions_and_keeps_valid_files(self):
+        import subprocess
+        documents = self.folder / "documents"
+        documents.mkdir()
+        junction = documents / "link"
+        completed = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(self.folder)],
+                                   capture_output=True, timeout=5)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        try:
+            self.page.add_files([documents, self.file])
+            self.assertEqual(set(self.page.targets), {str(self.file)})
+            self.assertIn("junctions", self.page.notice.text())
+            self.assertEqual(self.file.read_bytes(), b"Disposable UI test file")
+        finally:
+            junction.rmdir()
+
+    def test_initial_algorithm_label_and_explicit_single_pass_restore(self):
+        self.assertEqual(self.page.algorithm.text(), "Algorithm")
+        self.assertEqual(self.page.algorithm.currentData(), "single")
+        self.page.algorithm.choices["single"].trigger()
+        self._reopen()
+        self.assertEqual(self.page.algorithm.text(), "Single pass · 1 pass")
 
     def test_cancel_worker_keeps_later_files_and_restores_controls(self):
         second = self.folder / "later.txt"
@@ -351,6 +389,7 @@ class ShredPageTests(unittest.TestCase):
         try:
             self.assertEqual(reopened.canvas.currentWidget(), reopened.shred_page)
             self.assertEqual(reopened.shred_page.algorithm.currentData(), "gutmann")
+            self.assertEqual(reopened.shred_page.algorithm.text(), "Gutmann · 35 passes")
             self.assertEqual(reopened.shred_page.table.rowCount(), 0)
         finally:
             reopened.close()

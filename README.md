@@ -32,18 +32,22 @@ and Ctrl+L to focus Search.
 
 ### Shred
 
-Drop individual local files from Windows Explorer into the Shred table.
+Drop local files or entire folders from Windows Explorer into the Shred table.
+Folders add their files recursively, including subfolders, without duplicates.
+Each file stays individually selectable; empty folders remain on disk.
 The table shows name, type, path, size and status. Files start
 checked; use the table's header checkbox or individual checkboxes to choose
 the batch. Click rows to highlight them, Ctrl-click for multiple rows, or Shift-click
 for a range. Right-click the highlighted rows and choose **Remove**, or press Delete,
 to remove them from the list without touching files on disk. Escape clears highlights.
 
+The taller table fills the available workspace to reduce scrolling.
 Open **Algorithm** beside **Shred selected** to choose Single pass (default), Two passes, DoD-style (3), Seven passes, or Gutmann
 (35), then **Shred selected** and confirm the batch. Every pass overwrites all
 data streams, flushes writes and verifies the contents by reading them back.
 Random passes use fresh cryptographic random bytes. The algorithm and active
-tab are remembered. Files sent from Downloads stay queued across app restarts;
+tab are remembered. After choosing an algorithm, the button displays its full name,
+including after restarting the app. Files sent from Downloads stay queued across app restarts;
 their paths and file identities are saved locally until shredded or removed from
 the queue. Files added manually and shredding history stay only in memory.
 The table is centered at 75% of the workspace width, adapting to smaller windows.
@@ -57,8 +61,8 @@ but completed overwrites cannot be undone. Errors never report successful deleti
 
 This is logical file overwriting on local Windows NTFS drives, not physical
 device sanitization. SSD remapping, filesystem metadata, backups and snapshots
-can retain information, and more passes do not overcome those limits. Folders,
-network paths, links/junctions, cloud placeholders, hard-linked files and files
+can retain information, and more passes do not overcome those limits.
+Network paths, links/junctions, cloud placeholders, hard-linked files and files
 that are read-only, system, sparse, compressed, EFS-encrypted or offline are
 rejected. A file that changed after being added must be removed and added again.
 No drive-wide or free-space wiping is performed.
@@ -66,6 +70,8 @@ No drive-wide or free-space wiping is performed.
 ### Search and downloads
 
 Paste one or several video links into Search, then click **Inspect** or press Enter.
+Hovering over the link input adds valid copied links or magnets from the clipboard,
+without duplicates or starting inspection. Existing input and previews are kept.
 Shift+Enter adds another line. Each result shows its title, thumbnail, creator,
 and duration. YouTube and other yt-dlp-supported video sites
 use the same workflow; individual site restrictions can still prevent extraction.
