@@ -82,6 +82,21 @@ def stylesheet(c):
     QTreeWidget#torrentFiles::indicator:indeterminate {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{partial}"); }}
     QCheckBox::indicator:indeterminate {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{partial}"); }}
     QHeaderView {{ background: transparent; }}
+    QTableWidget#shredTable {{ background: transparent; border: 1px solid {c['line']}; border-radius: 0;
+        outline: none; selection-background-color: {c['accent_soft']}; selection-color: {c['ink']}; }}
+    QTableWidget#shredTable::item {{ padding: 8px; border: none; border-radius: 0;
+        border-bottom: 1px solid {c['line']}; }}
+    QTableWidget#shredTable::item:selected {{ background: {c['accent_soft']}; color: {c['ink']};
+        border-bottom: 1px solid {c['accent']}; }}
+    QTableWidget#shredTable QHeaderView::section {{ padding-left: 11px; }}
+    QTableWidget#shredTable::indicator {{ width: 15px; height: 15px; border: 1px solid {c['muted']}; border-radius: 3px; }}
+    QTableWidget#shredTable::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; image: url("{check}"); }}
+    QPushButton#shredAlgorithm {{ border: 1px solid {c['line']}; padding: 8px 28px 8px 12px; }}
+    QPushButton#shredAlgorithm::menu-indicator {{ image: url("{arrow}"); width: 12px; height: 12px;
+        subcontrol-position: right center; right: 10px; }}
+    QPushButton[role='outline'] {{ border: 1px solid {c['accent']}; padding: 8px 20px; }}
+    QDialog#shredConfirmation {{ background: {c['surface']}; border: 1px solid {c['line']}; }}
+    QDialog#shredConfirmation QPushButton[role='plain']:focus {{ border-color: transparent; text-decoration: underline; }}
     QHeaderView::section {{ background: {c['paper']}; color: {c['muted']}; font-size: 12px;
         border: none; border-bottom: 1px solid {c['line']}; padding: 10px 8px; text-align: left; }}
     QMenu {{ background: {c['surface']}; border: 1px solid {c['line']}; padding: 5px; }}

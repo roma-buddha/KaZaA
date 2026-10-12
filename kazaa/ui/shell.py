@@ -15,6 +15,7 @@ from .shell_icons import icon
 from .shell_frame import ShellFrame
 from ..video_jobs import VideoQueue
 from .video_pages import DownloadedPage, SearchPage, save_folder
+from .shred_page import ShredPage
 
 
 class SidebarHandle(QSplitterHandle):
@@ -159,7 +160,7 @@ class ShellWindow(ShellFrame):
         sidebar_layout.setSpacing(4)
         self.navigation_group = QButtonGroup(self)
         self.navigation_buttons = {}
-        for key, title in (("search", "Search"), ("downloaded", "Downloads")):
+        for key, title in (("search", "Search"), ("downloaded", "Downloads"), ("shred", "Shred")):
             button = QPushButton(title)
             button.setProperty("role", "nav")
             button.setCheckable(True)
@@ -186,9 +187,16 @@ class ShellWindow(ShellFrame):
         self.download_queue = VideoQueue(self.preferences_path.parent / "video-downloads.json", self)
         self.search_page = SearchPage(self.download_queue)
         self.downloaded_page = DownloadedPage(self.download_queue)
+        self.shred_page = ShredPage(self.preferences["shred_algorithm"],
+                                   queue_path=self.preferences_path.parent / "shred-queue.json")
+        self.download_queue.shred_files = self.shred_page.enqueue_files
+        self.shred_page.files_shredded.connect(self.download_queue.files_shredded)
+        self.shred_page.files_released.connect(self.download_queue.files_released)
+        self.shred_page.algorithm_changed.connect(self._shred_algorithm_changed)
         self.search_page.open_download.connect(self._open_download)
         self.canvas.addWidget(self.search_page)
         self.canvas.addWidget(self.downloaded_page)
+        self.canvas.addWidget(self.shred_page)
         self.appearance = AppearanceDialog(self)
         self.appearance.theme_changed.connect(self.set_theme)
         self.appearance.dismissed.connect(self._settings_dismissed)
@@ -214,7 +222,8 @@ class ShellWindow(ShellFrame):
         if page not in self.navigation_buttons:
             return
         self.preferences["page"] = page
-        self.canvas.setCurrentIndex(0 if page == "search" else 1)
+        self.canvas.setCurrentWidget({"search": self.search_page, "downloaded": self.downloaded_page,
+                                     "shred": self.shred_page}[page])
         self.navigation_buttons[page].setChecked(True)
         for key, button in self.navigation_buttons.items():
             button.setIcon(icon(key, self.colors["accent"] if key == page else self.colors["muted"]))
@@ -223,6 +232,10 @@ class ShellWindow(ShellFrame):
     def _focus_links(self):
         self.navigate("search")
         self.search_page.input.setFocus()
+
+    def _shred_algorithm_changed(self, algorithm):
+        self.preferences["shred_algorithm"] = algorithm
+        self._save()
 
     def _icon_button(self, accessible_name):
         button = QPushButton()
@@ -369,9 +382,10 @@ class ShellWindow(ShellFrame):
                 table.scrollToItem(table.item(row, 0))
 
     def closeEvent(self, event):
+        self.shred_page.stop()
         self.search_page.inspector.stop()
         self.download_queue.stop()
-        if self.search_page.inspector.workers or self.download_queue.workers:
+        if self.search_page.inspector.workers or self.download_queue.workers or self.shred_page.worker:
             event.ignore()
             self.setEnabled(False)
             QTimer.singleShot(100, self.close)

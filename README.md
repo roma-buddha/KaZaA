@@ -8,7 +8,7 @@ The integrated header uses the workspace background, a text-only KaZaA wordmark,
 and a compact row of sidebar, theme and appearance controls. Minimize, maximize,
 restore and close sit at the right. Windows dragging, edge resizing and snapping
 use native frame handling without a separate system title bar.
-The sidebar has two pages: **Search** and **Downloads**.
+The sidebar has three pages: **Search**, **Downloads**, and **Shred**.
 Sidebar collapse/resizing, keyboard shortcuts, and saved appearance preferences
 work. The icon-only gear beside the wordmark opens theme and download-folder settings.
 The sidebar toggle has no persistent selection outline. The rounded K-and-orbit
@@ -29,6 +29,37 @@ Appearance is saved in `%APPDATA%\KaZaA\shell-settings.json`; download options
 and history are saved in `%APPDATA%\KaZaA\video-downloads.json`.
 Use Ctrl+B to toggle the sidebar, Ctrl+, for settings, Ctrl+Shift+L to change theme,
 and Ctrl+L to focus Search.
+
+### Shred
+
+Drop individual local files from Windows Explorer into the Shred table, or use
+**Add files…**. The table shows name, type, path, size and status. Files start
+checked; use the table's header checkbox or individual checkboxes to choose
+the batch. **Remove** takes checked files out of the list
+without touching files on disk.
+
+Open **Algorithm** beside **Shred selected** to choose Single pass (default), Two passes, DoD-style (3), Seven passes, or Gutmann
+(35), then **Shred selected** and confirm the batch. Every pass overwrites all
+data streams, flushes writes and verifies the contents by reading them back.
+Random passes use fresh cryptographic random bytes. The algorithm and active
+tab are remembered. Files sent from Downloads stay queued across app restarts;
+their paths and file identities are saved locally until shredded or removed from
+the queue. Files added manually and shredding history stay only in memory.
+The table is centered at 75% of the workspace width, adapting to smaller windows.
+Per-file percentages and thin progress bars match Downloads; overall progress
+appears below the table. Verified successes leave the table immediately, while
+failed and cancelled files stay with their status and error tooltips. The
+confirmation has only Cancel and Shred controls. Cancelling or closing the app
+stops the worker safely; a partly overwritten file stays at its existing size,
+but completed overwrites cannot be undone. Errors never report successful deletion.
+
+This is logical file overwriting on local Windows NTFS drives, not physical
+device sanitization. SSD remapping, filesystem metadata, backups and snapshots
+can retain information, and more passes do not overcome those limits. Folders,
+network paths, links/junctions, cloud placeholders, hard-linked files and files
+that are read-only, system, sparse, compressed, EFS-encrypted or offline are
+rejected. A file that changed after being added must be removed and added again.
+No drive-wide or free-space wiping is performed.
 
 ### Search and downloads
 
@@ -73,8 +104,10 @@ Double-click a downloaded row to open its file in the default app for its format
 entries with several files offer a file picker menu. Right-click a selected row
 to delete the selection together.
 Escape clears selection. **Delete…** offers entry only, file only, or both.
-Files go to the Recycle Bin; active jobs must be
-stopped first. Deleting only the file keeps its history with a File deleted label.
+Choosing a file-deletion option sends the files to **Shred**, where they accumulate
+without changing the files on disk. Active jobs must be stopped first. Keeping
+the download entry shows **In Shred** until the files are shredded, then **File deleted**.
+Removing files from the Shred list keeps them on disk and clears the pending status.
 Speed and ETA have separate columns. Hover over Source to see the original link
 or torrent seed/peer counts and health. History survives restarting; unfinished
 transfers restart automatically, while manually paused or stopped jobs stay inactive.

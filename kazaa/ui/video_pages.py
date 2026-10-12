@@ -611,14 +611,14 @@ class DeleteDownloadDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
         layout.addWidget(label(f"{len(jobs)} selected downloads" if multiple else jobs[0].get("title") or "Download", "cardTitle"))
-        layout.addWidget(label("Choose what to delete. Files are moved to the Recycle Bin.", "muted"))
+        layout.addWidget(label("Files go to Shred and stay on disk until you shred them there.", "muted"))
         self.choices = {}
         titles = (("entry", "Remove entries only — keep files"),
-                  ("file", "Delete files only — keep entries"),
-                  ("both", "Delete entries and files")) if multiple else (
+                  ("file", "Send files to Shred — keep entries"),
+                  ("both", "Remove entries and send files to Shred")) if multiple else (
                   ("entry", "Remove entry only — keep the file"),
-                  ("file", "Delete file only — keep the entry"),
-                  ("both", "Delete entry and file"))
+                  ("file", "Send files to Shred — keep the entry"),
+                  ("both", "Remove entry and send files to Shred"))
         for mode, title in titles:
             choice = QRadioButton(title)
             choice.setEnabled(mode == "entry" or any(item.get("files") for item in jobs))
@@ -726,7 +726,7 @@ class DownloadedPage(CenteredPage):
         if status == "downloading" and percent is not None:
             state = f"{round(percent)}%"
         if status == "completed":
-            state = "File deleted" if job.get("files_deleted") else "100%"
+            state = "In Shred" if job.get("pending_shred_files") else "File deleted" if job.get("files_deleted") else "100%"
         widget.state.setText(state)
         widget.setToolTip(job.get("error") or (f"{duration(job['eta'])} remaining" if job.get("eta") is not None else status.title()))
         widget.bar.setVisible(status in ACTIVE)
@@ -839,16 +839,18 @@ class DownloadedPage(CenteredPage):
         dialog = DeleteDownloadDialog([self.jobs[item] for item in job_ids], self)
         if dialog.exec() == QDialog.Accepted:
             failures = []
+            mode = dialog.mode()
             if not self._can_delete(job_ids):
                 failures.append("Stop active downloads before deleting the selection.")
             else:
                 for item in job_ids:
                     title = self.jobs[item].get("title") or "Download"
                     try:
-                        self.queue.delete(item, dialog.mode())
+                        self.queue.delete(item, mode)
                     except (OSError, ValueError) as exc:
                         failures.append(f"{title}: {exc}")
-            self._notice("\n".join(failures))
+            self._notice("\n".join(failures) if failures else
+                "Files queued in Shred. Open Shred to permanently delete them." if mode in ("file", "both") else "")
         dialog.deleteLater()
 
     def _show_menu(self, job_id, position):

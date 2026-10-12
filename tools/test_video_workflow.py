@@ -591,34 +591,34 @@ class VideoTests(unittest.TestCase):
         page = DownloadedPage(self.queue)
         for mode in ("entry", "file", "both"):
             job_id, output = self._completed_fixture()
-            def recycle(path):
-                Path(path).unlink()  # Only the temporary fixture; mock the external trash API.
-                return True
-            with patch("kazaa.video_jobs.QFile.moveToTrash", side_effect=recycle) as trash:
+            with patch.object(self.queue, "shred_files") as handoff:
                 self.queue.delete(job_id, mode)
-                self.assertEqual(trash.call_count, 0 if mode == "entry" else 1)
-            self.assertEqual(output.exists(), mode == "entry")
+                self.assertEqual(handoff.call_count, 0 if mode == "entry" else 1)
+                if mode != "entry":
+                    handoff.assert_called_once_with([str(output)])
+            self.assertTrue(output.exists())
             restored = VideoQueue(self.queue.path, worker_factory=FakeWorker)
             self.assertEqual(job_id in restored.jobs, mode == "file")
             self.assertEqual(page.completed_table.row_for(job_id) >= 0, mode == "file")
             if mode == "file":
                 row = page.completed_table.row_for(job_id)
-                self.assertEqual(page.completed_table.cellWidget(row, 6).state.text(), "File deleted")
-                self.assertTrue(restored.jobs[job_id]["files_deleted"])
-                self.assertFalse(page.context_menu(job_id).actions()[0].isEnabled())
+                self.assertEqual(page.completed_table.cellWidget(row, 6).state.text(), "In Shred")
+                self.assertEqual(restored.jobs[job_id]["pending_shred_files"], [str(output)])
+                self.assertFalse(restored.jobs[job_id]["files_deleted"])
+                self.assertTrue(page.context_menu(job_id).actions()[0].isEnabled())
                 self.queue.delete(job_id, "entry")
         self.assertEqual(page.jobs, {})
         self.assertFalse(page.empty.isHidden())
         page.deleteLater()
 
-    def test_delete_rejects_active_jobs_and_keeps_entry_when_recycling_fails(self):
+    def test_delete_rejects_active_jobs_and_keeps_entry_when_handoff_fails(self):
         job_id = self.queue.submit(media(), self.options)
         with self.assertRaisesRegex(ValueError, "Stop"):
             self.queue.delete(job_id, "both")
         self.queue.workers[job_id].fail("Cancelled")
         self.queue.delete(job_id)
         job_id, output = self._completed_fixture()
-        with patch("kazaa.video_jobs.QFile.moveToTrash", return_value=False):
+        with patch.object(self.queue, "shred_files", side_effect=OSError("Handoff failed; the entry was kept")):
             with self.assertRaisesRegex(OSError, "entry was kept"):
                 self.queue.delete(job_id, "both")
         self.assertTrue(output.exists())
@@ -805,16 +805,17 @@ class VideoTests(unittest.TestCase):
             entries = self._completed_batch()
             page = DownloadedPage(self.queue)
             selected = [job_id for job_id, output in entries[:2]]
-            def recycle(path):
-                Path(path).unlink()
-                return True
             with patch.object(DeleteDownloadDialog, "exec", return_value=DeleteDownloadDialog.Accepted), \
                     patch.object(DeleteDownloadDialog, "mode", return_value=mode), \
-                    patch("kazaa.video_jobs.QFile.moveToTrash", side_effect=recycle):
+                    patch.object(self.queue, "shred_files") as handoff:
                 page._delete(selected)
+                self.assertEqual(handoff.call_count, 0 if mode == "entry" else 2)
+                if mode != "entry":
+                    self.assertEqual([call.args[0] for call in handoff.call_args_list],
+                                     [[str(output)] for _, output in entries[:2]])
             for job_id, output in entries[:2]:
                 self.assertEqual(job_id in self.queue.jobs, mode == "file")
-                self.assertEqual(output.exists(), mode == "entry")
+                self.assertTrue(output.exists())
             self.assertIn(entries[2][0], self.queue.jobs)
             self.assertTrue(entries[2][1].exists())
             page.deleteLater()
@@ -1235,10 +1236,10 @@ class VideoTests(unittest.TestCase):
         unrelated = self.root / "unrelated.txt"
         unrelated.write_text("keep")
         self.queue.jobs[job_id]["files"] = [str(unrelated)]
-        with patch("kazaa.video_jobs.QFile.moveToTrash") as trash:
+        with patch.object(self.queue, "shred_files") as handoff:
             with self.assertRaisesRegex(ValueError, "Only this torrent"):
                 self.queue.delete(job_id, "both")
-            trash.assert_not_called()
+            handoff.assert_not_called()
         self.assertTrue(unrelated.is_file())
 
     def test_torrent_table_and_file_selection_menu_use_existing_actions(self):
@@ -1274,9 +1275,10 @@ class VideoTests(unittest.TestCase):
             self.assertEqual(open_url.call_args.args[0].toLocalFile(), str(output.parent).replace("\\", "/"))
         dialog = DeleteDownloadDialog(self.queue.jobs[job_id])
         self.assertEqual(set(dialog.choices), {"entry", "file", "both"})
-        with patch("kazaa.video_jobs.QFile.moveToTrash", return_value=True) as trash:
+        with patch.object(self.queue, "shred_files") as handoff:
             self.queue.delete(job_id, "both")
-            trash.assert_called_once_with(str(output))
+            handoff.assert_called_once_with([str(output)])
+        self.assertTrue(output.is_file())
         self.assertTrue(unrelated.is_file())
         self.assertNotIn(job_id, self.queue.jobs)
         dialog.deleteLater()

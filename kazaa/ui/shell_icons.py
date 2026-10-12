@@ -14,6 +14,7 @@ PATHS = {
     "restore": '<path d="M9 6h9v9M9 9V6"/><rect x="5" y="10" width="9" height="9" rx="1"/>',
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
     "downloaded": '<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
+    "shred": '<path d="M7 9V3h7l3 3v3M14 3v3h3M4 9h16v8H4zM7 13h10M7 17v4m4-4v3m4-3v4m3-4v3"/>',
     "chevron_down": '<path d="m6 9 6 6 6-6"/>',
     "chevron_right": '<path d="m9 6 6 6-6 6"/>',
 }

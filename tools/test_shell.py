@@ -39,16 +39,18 @@ class ShellTests(unittest.TestCase):
         QTest.mouseClick(widget, Qt.LeftButton)
         self.app.processEvents()
 
-    def test_only_search_and_downloaded_navigation_are_available(self):
-        self.assertEqual(set(self.window.navigation_buttons), {"search", "downloaded"})
-        self.assertEqual(len(self.window.sidebar.findChildren(QPushButton)), 2)
-        self.assertEqual(self.window.canvas.count(), 2)
+    def test_search_downloaded_and_shred_navigation_are_available(self):
+        self.assertEqual(set(self.window.navigation_buttons), {"search", "downloaded", "shred"})
+        self.assertEqual(len(self.window.sidebar.findChildren(QPushButton)), 3)
+        self.assertEqual(self.window.canvas.count(), 3)
         self.assertEqual(self.window.navigation_buttons["downloaded"].text(), "Downloads")
         self.assertEqual(self.window.navigation_buttons["downloaded"].accessibleName(), "Downloads")
         self.click(self.window.navigation_buttons["downloaded"])
         self.assertEqual(self.window.canvas.currentWidget(), self.window.downloaded_page)
         self.click(self.window.navigation_buttons["search"])
         self.assertEqual(self.window.canvas.currentWidget(), self.window.search_page)
+        self.click(self.window.navigation_buttons["shred"])
+        self.assertEqual(self.window.canvas.currentWidget(), self.window.shred_page)
         forbidden = {"Local workspace", "On this computer", "Overview", "WORKSPACE",
                      "MEDIA", "COLLECTION", "Downloads", "Music", "Convert", "Recorder", "Library"}
         for widget in self.window.findChildren(QLabel):

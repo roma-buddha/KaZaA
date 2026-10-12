@@ -11,7 +11,7 @@ import threading
 import tempfile
 import uuid
 
-from PySide6.QtCore import QFile, QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 from .video_backend import DownloadOptions, link_key, validate_url
 from .sources import normalize_source, output_paths, validate_selection
@@ -184,10 +184,11 @@ class VideoQueue(QObject):
     removed = Signal(str)
     notice = Signal(str)
 
-    def __init__(self, path, parent=None, worker_factory=ProcessWorker):
+    def __init__(self, path, parent=None, worker_factory=ProcessWorker, shred_files=None):
         super().__init__(parent)
         self.path = Path(path)
         self.worker_factory = worker_factory
+        self.shred_files = shred_files
         self.jobs = {}
         self.options = {}
         self.workers = {}
@@ -216,7 +217,9 @@ class VideoQueue(QObject):
                         DownloadOptions.from_dict(job["options"])
                 except (ValueError, TypeError, KeyError, OSError):
                     continue
-                if job["status"] in ("pausing", "stopping", "cancelling"):
+                if job.get("pending_shred_files") and job["status"] in ACTIVE | {"interrupted"}:
+                    job.update(status="stopped", speed=None, eta=None)
+                elif job["status"] in ("pausing", "stopping", "cancelling"):
                     job["status"] = {"pausing": "paused", "stopping": "stopped", "cancelling": "cancelled"}[job["status"]]
                 elif job["status"] in ACTIVE | {"interrupted"}:
                     job.update(status="queued", error="", speed=None, eta=None)
@@ -288,6 +291,8 @@ class VideoQueue(QObject):
         job = self.jobs[job_id]
         if job.get("source") != "torrent" or job["status"] in ACTIVE or job_id in self.workers:
             raise ValueError("Pause or stop this torrent before choosing files.")
+        if job.get("pending_shred_files"):
+            raise ValueError("Remove these files from Shred before resuming this download.")
         job["options"]["selected_files"] = validate_selection(job["torrent"]["manifest"], selected)
         job.update(status="queued", error="", percent=None, completed=None, speed=None, eta=None, files_deleted=False)
         self._changed(job_id)
@@ -378,6 +383,9 @@ class VideoQueue(QObject):
         if job_id in self.workers or self.jobs[job_id]["status"] not in ("failed", "cancelled", "interrupted", "paused", "stopped"):
             return
         job = self.jobs[job_id]
+        if job.get("pending_shred_files"):
+            self.notice.emit("Remove these files from Shred before resuming this download.")
+            return
         job.update(status="queued", error="", percent=None, files=job.get("files", []) if job.get("source") == "torrent" else [],
                                  total_bytes=None, downloaded_bytes=None, speed=None, eta=None,
                                  completed=None, actual_quality="", files_deleted=False)
@@ -385,7 +393,7 @@ class VideoQueue(QObject):
         self._pump()
 
     def delete(self, job_id, mode="entry"):
-        """Delete an inactive history entry and/or its recorded output files."""
+        """Remove history and/or hand recorded output files to the Shred queue."""
         if mode not in ("entry", "file", "both"):
             raise ValueError("Choose whether to remove the entry, the file, or both.")
         job = self.jobs[job_id]
@@ -397,15 +405,22 @@ class VideoQueue(QObject):
                 allowed = set(output_paths(job["torrent"]["manifest"], job["options"]["folder"]).values())
                 if any(str(Path(path).resolve()) not in allowed for path in paths):
                     raise ValueError("Only this torrent's output files can be deleted.")
-            # Preflight every output before recycling anything; never recycle directories.
+            # Preflight every output before handing anything over; never queue directories.
+            existing = []
             for path in paths:
                 if Path(path).is_dir():
                     raise ValueError("Only this entry's output files can be deleted.")
-            for path in paths:
-                if Path(path).exists() and not QFile.moveToTrash(path):
-                    raise OSError("Could not move the file to the Recycle Bin. The entry was kept; "
-                                  "any files already moved remain in the Recycle Bin.")
-            job["files_deleted"] = True
+                try:
+                    Path(path).lstat()
+                except FileNotFoundError:
+                    continue
+                existing.append(path)
+            if existing:
+                if self.shred_files is None:
+                    raise ValueError("Shred queue is unavailable. The entry and files were kept.")
+                self.shred_files(existing)  # Must save/accept every file or raise before history changes.
+            job["pending_shred_files"] = existing
+            job["files_deleted"] = not existing
         if mode in ("entry", "both"):
             self.jobs.pop(job_id)
             if not self.save():
@@ -416,7 +431,31 @@ class VideoQueue(QObject):
         else:
             self._changed(job_id, persist=False)
             if not self.save():
-                raise OSError("The file was deleted, but its updated history could not be saved.")
+                raise OSError("The files are in Shred, but their updated download history could not be saved.")
+
+    def _shred_result(self, paths, deleted):
+        confirmed = {os.path.normcase(os.path.abspath(path)) for path in paths}
+        changed = False
+        for job_id, job in self.jobs.items():
+            pending = job.get("pending_shred_files", [])
+            remaining = [path for path in pending if os.path.normcase(os.path.abspath(path)) not in confirmed]
+            if len(pending) == len(remaining):
+                continue
+            job["pending_shred_files"] = remaining
+            if deleted:
+                job["files_deleted"] = not remaining and not any(Path(path).exists() for path in job.get("files", []))
+            else:
+                job["files_deleted"] = False
+            self._changed(job_id, persist=False)
+            changed = True
+        if changed:
+            self.save()
+
+    def files_shredded(self, paths):
+        self._shred_result(paths, deleted=True)
+
+    def files_released(self, paths):
+        self._shred_result(paths, deleted=False)
 
     def pause(self, job_id):
         job = self.jobs[job_id]
